@@ -149,6 +149,7 @@
     resultsBox.hidden = true;
 
     var controller = form.querySelector('input[name="controller"]:checked').value;
+    var useField = document.getElementById("use_field");
     var payload = {
       tractor: tractorSel.value,
       implement: implementSel.value || null,
@@ -161,6 +162,12 @@
       stanley_gain: parseFloat(document.getElementById("stanley_gain").value),
       actuator: document.getElementById("actuator").checked
     };
+    if (useField && useField.checked && fieldInfo && lastPlace) {
+      payload.field = {
+        lat: lastPlace.lat, lon: lastPlace.lon,
+        heading_deg: parseFloat(document.getElementById("heading").value) || 0
+      };
+    }
 
     fetch("/api/simulate", {
       method: "POST",
@@ -208,10 +215,19 @@
     }
 
     setupScene(data);
+    drawProfile(data.field);
     drawChart(s, lines);
     drawLegend(lines);
     drawMetrics(data, m);
     drawTable(s, lines);
+
+    if (m.jackknifed) {
+      formError.hidden = false;
+      formError.textContent = "The hitch reached its stop after " +
+        fmt(m.jackknife_time, 1) + " seconds. Past that angle a drawbar cannot " +
+        "fold any further and this model no longer describes the machine, so " +
+        "treat the implement figures after that point as invalid.";
+    }
 
     var summary = "Over " + fmt(s.t[s.t.length - 1], 0) + " seconds the tractor settles at " +
       fmt(m.final_cross_track) + " metres from the line, with a peak of " +
@@ -224,6 +240,60 @@
         " percent of the working width.";
     }
     document.getElementById("chart-summary").textContent = summary;
+  }
+
+  /* The ground itself, drawn against distance rather than time, because that
+     is the axis the terrain lives on. */
+  function drawProfile(field) {
+    var card = document.getElementById("profile-card");
+    if (!field) { card.hidden = true; return; }
+    card.hidden = false;
+
+    var W = 760, H = 210, padL = 58, padR = 18, padT = 14, padB = 42;
+    var xs = field.positions_m, ys = field.side_slope_deg;
+    var xMax = xs[xs.length - 1] || 1;
+    var lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
+    var pad = Math.max(0.5, (hi - lo) * 0.15);
+    lo -= pad; hi += pad;
+
+    function X(v) { return padL + (v / xMax) * (W - padL - padR); }
+    function Y(v) { return padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB); }
+
+    var svg = ['<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" focusable="false">'];
+    svg.push('<rect width="' + W + '" height="' + H + '" fill="#F6F1E7"/>');
+    for (var i = 0; i <= 4; i++) {
+      var v = lo + (hi - lo) * (i / 4);
+      svg.push('<line x1="' + padL + '" y1="' + Y(v).toFixed(1) + '" x2="' + (W - padR) +
+        '" y2="' + Y(v).toFixed(1) + '" stroke="#CFC1A3"/>');
+      svg.push('<text x="' + (padL - 8) + '" y="' + (Y(v) + 4).toFixed(1) +
+        '" text-anchor="end" font-size="11" font-family="ui-monospace, monospace" fill="#8A7659">' +
+        v.toFixed(1) + '</text>');
+    }
+    svg.push('<line x1="' + padL + '" y1="' + Y(0).toFixed(1) + '" x2="' + (W - padR) +
+      '" y2="' + Y(0).toFixed(1) + '" stroke="#33291D" stroke-width="1.5" stroke-dasharray="6 4"/>');
+
+    var area = ["M" + X(xs[0]).toFixed(1) + " " + Y(0).toFixed(1)];
+    var line = [];
+    for (var k = 0; k < xs.length; k++) {
+      area.push("L" + X(xs[k]).toFixed(1) + " " + Y(ys[k]).toFixed(1));
+      line.push((k ? "L" : "M") + X(xs[k]).toFixed(1) + " " + Y(ys[k]).toFixed(1));
+    }
+    area.push("L" + X(xs[xs.length - 1]).toFixed(1) + " " + Y(0).toFixed(1) + "Z");
+    svg.push('<path d="' + area.join(" ") + '" fill="rgba(139,102,66,0.22)"/>');
+    svg.push('<path d="' + line.join(" ") + '" fill="none" stroke="#8A4826" stroke-width="2.4"/>');
+    svg.push('<text x="' + ((W - padL) / 2 + padL) + '" y="' + (H - 8) +
+      '" text-anchor="middle" font-size="12" fill="#33291D">distance along the pass (m)</text>');
+    svg.push('<text transform="translate(14,' + (H / 2) +
+      ') rotate(-90)" text-anchor="middle" font-size="12" fill="#33291D">side slope (deg)</text>');
+    svg.push("</svg>");
+    document.getElementById("profile-chart").innerHTML = svg.join("");
+
+    document.getElementById("profile-summary").textContent =
+      "Measured from USGS elevation at " + field.resolution_m + " m resolution, " +
+      field.stations + " stations every " + field.spacing_m + " m. The side slope runs from " +
+      field.min_deg.toFixed(2) + " to " + field.max_deg.toFixed(2) +
+      " degrees and the ground rises and falls " + field.elevation_change_m +
+      " m along the pass. Positive means the ground falls to the left of travel.";
   }
 
   function drawChart(s, lines) {
@@ -315,7 +385,7 @@
   /* ---------- 3D playback ---------- */
 
   var scene = null, sceneData = null, frame = 0, playing = false, rafId = null;
-  var terrain = null, fieldInfo = null;
+  var terrain = null, fieldInfo = null, lastPlace = null;
   var reduceMotion = window.matchMedia
     && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -429,6 +499,10 @@
       window.GuidanceTerrain.readField(here.lat, here.lon, heading)
         .then(function (info) {
           fieldInfo = info;
+          lastPlace = here;
+          var wrap = document.getElementById("use-field-wrap");
+          wrap.hidden = false;
+          document.getElementById("use_field").checked = true;
           document.getElementById("slope_deg").value = info.side_slope_deg.toFixed(2);
           note.textContent =
             "Ground at " + info.elevation_m.toFixed(0) + " m. Driving on a heading of " +

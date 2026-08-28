@@ -85,6 +85,51 @@ DEFAULT_IMPLEMENT_DRIFT_RATIO = Param(
 
 
 @dataclass(frozen=True)
+class SlopeProfile:
+    """Side slope as a function of distance along the guidance line.
+
+    Real ground is not a plane. A single slope number answers "what would this
+    machine do on a uniform hillside", which is a useful question but not the
+    same as "what does it do in this field". A profile carries the signed side
+    slope, positive meaning the ground falls to the left of travel, sampled at
+    known distances and interpolated between them.
+
+    Outside the sampled range the end values are held rather than extrapolated,
+    because extrapolating a hillside past the data is inventing terrain.
+    """
+
+    positions: np.ndarray  # m along the line, ascending
+    side_slope: np.ndarray  # rad, signed
+    source: str = "unspecified"
+
+    def __post_init__(self) -> None:
+        if len(self.positions) != len(self.side_slope):
+            raise ValueError("positions and side_slope must be the same length")
+        if len(self.positions) < 2:
+            raise ValueError("a profile needs at least two samples")
+        if not np.all(np.diff(self.positions) > 0):
+            raise ValueError("positions must increase")
+
+    def at(self, x: float) -> float:
+        return float(np.interp(x, self.positions, self.side_slope))
+
+    @property
+    def span(self) -> tuple[float, float]:
+        return float(self.positions[0]), float(self.positions[-1])
+
+    def summary(self) -> dict:
+        deg = np.degrees(self.side_slope)
+        return {
+            "samples": int(len(self.positions)),
+            "length_m": round(float(self.positions[-1] - self.positions[0]), 1),
+            "min_deg": round(float(deg.min()), 3),
+            "max_deg": round(float(deg.max()), 3),
+            "mean_abs_deg": round(float(np.abs(deg).mean()), 3),
+            "source": self.source,
+        }
+
+
+@dataclass(frozen=True)
 class Terrain:
     """Side slope and slip. Defaults are flat ground with no slip."""
 
@@ -93,6 +138,8 @@ class Terrain:
     slip: float = 0.0  # travel reduction fraction, 0 to <1
     drift_coefficient: Param = DEFAULT_DRIFT_COEFFICIENT
     implement_drift_ratio: Param = DEFAULT_IMPLEMENT_DRIFT_RATIO
+    # When present, the ground varies along the pass and slope_angle is unused.
+    profile: SlopeProfile | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.slip < 1.0:
@@ -104,8 +151,21 @@ class Terrain:
 
     @property
     def lateral_drift(self) -> float:
-        """Signed drift velocity perpendicular to heading, positive to the left."""
+        """Signed drift velocity perpendicular to heading, positive to the left.
+
+        The uniform-hillside value. With a profile in place the position
+        dependent `drift_at` is what the model uses.
+        """
         return self.slope_sign * self.drift_coefficient.value * G * np.sin(self.slope_angle)
+
+    def drift_at(self, x: float) -> float:
+        """Drift where the machine actually is."""
+        if self.profile is None:
+            return self.lateral_drift
+        return self.drift_coefficient.value * G * np.sin(self.profile.at(x))
+
+    def implement_drift_at(self, x: float) -> float:
+        return self.implement_drift_ratio.value * self.drift_at(x)
 
     @property
     def implement_drift(self) -> float:
@@ -118,7 +178,7 @@ class Terrain:
 
     @property
     def slope_enabled(self) -> bool:
-        return self.slope_angle != 0.0
+        return self.slope_angle != 0.0 or self.profile is not None
 
     @property
     def slip_enabled(self) -> bool:

@@ -19,7 +19,7 @@ from aggsim.analysis.coverage import coverage_between_passes
 from aggsim.catalog import load_catalog
 from aggsim.catalog.param import Param
 from aggsim.config import load_steering
-from aggsim.config.terrain import Terrain
+from aggsim.config.terrain import SlopeProfile, Terrain
 from aggsim.control import (
     PurePursuitGains,
     StanleyGains,
@@ -31,6 +31,7 @@ from aggsim.model import State, from_tractor, implement_from_catalog
 from aggsim.sim import SimConfig, simulate
 
 from .machine_geometry import machine_geometry
+from .terrain import TerrainError, slope_profile
 
 LINE = ABLine((0.0, 0.0), (1.0, 0.0))
 MAX_POINTS = 600
@@ -136,10 +137,29 @@ def run_simulation(req, max_steps: int) -> dict:
         dt = req.duration / max_steps
         steps = max_steps
 
+    profile = None
+    profile_summary = None
+    if req.field is not None:
+        # Sample far enough to cover the whole run, so the machine never drives
+        # off the end of the measured ground.
+        travel = req.speed * req.duration
+        try:
+            sampled = slope_profile(req.field.lat, req.field.lon,
+                                    req.field.heading_deg, travel)
+        except TerrainError as exc:
+            raise SimulationError(f"Could not read that field: {exc}") from None
+        profile = SlopeProfile(
+            positions=np.asarray(sampled["positions_m"], dtype=float),
+            side_slope=np.asarray(sampled["side_slope_rad"], dtype=float),
+            source=f"USGS 3DEP at {req.field.lat:.4f}, {req.field.lon:.4f}",
+        )
+        profile_summary = sampled
+
     terrain = Terrain(
         slope_angle=math.radians(req.slope_deg),
         slope_sign=float(req.slope_sign),
         slip=req.slip,
+        profile=profile,
         implement_drift_ratio=Param(
             value=req.implement_drift_ratio,
             unit="dimensionless",
@@ -179,6 +199,8 @@ def run_simulation(req, max_steps: int) -> dict:
     }
 
     summary = {
+        "jackknifed": bool(log.jackknifed),
+        "jackknife_time": log.jackknife_time,
         "final_cross_track": round(log.final_cross_track(), 5),
         "rms_cross_track": round(log.rms_cross_track(), 5),
         "peak_cross_track": round(float(np.max(np.abs(log.cross_track))), 5),
@@ -211,6 +233,7 @@ def run_simulation(req, max_steps: int) -> dict:
         },
         "series": series,
         "summary": summary,
+        "field": profile_summary,
         "scene": {
             "machine": machine_geometry(tractor, implement, geometry),
             "slope_deg": req.slope_deg,

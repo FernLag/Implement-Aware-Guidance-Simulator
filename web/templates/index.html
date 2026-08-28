@@ -121,6 +121,10 @@
             <span class="btn-label">Read slope from this field</span>
             <span class="spinner" aria-hidden="true"></span>
           </button>
+          <p class="field checkbox" id="use-field-wrap" hidden>
+            <label><input type="checkbox" id="use_field" name="use_field">
+            Run on this field's real ground, not a uniform slope</label>
+          </p>
           <p class="field-note" id="field-note" role="status" aria-live="polite"></p>
         </div>
 
@@ -194,6 +198,13 @@
             field is loaded, are courtesy of the U.S. Geological Survey. They
             are fetched by this server rather than by your browser, so no
             request goes from you to a third party.</p>
+          </figure>
+
+          <figure class="chart-card" id="profile-card" hidden>
+            <figcaption id="profile-caption">The ground along this pass</figcaption>
+            <div class="chart-holder" id="profile-chart" role="img"
+                 aria-labelledby="profile-caption" aria-describedby="profile-summary"></div>
+            <p class="chart-summary" id="profile-summary"></p>
           </figure>
 
           <figure class="chart-card">

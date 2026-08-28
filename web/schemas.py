@@ -14,6 +14,16 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+class FieldRef(BaseModel):
+    """A real location whose ground the simulation should run on."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lat: float = Field(ge=-90.0, le=90.0)
+    lon: float = Field(ge=-180.0, le=180.0)
+    heading_deg: float = Field(default=90.0, ge=0.0, lt=360.0)
+
+
 class SimulationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -35,6 +45,11 @@ class SimulationRequest(BaseModel):
     implement_drift_ratio: float = Field(default=1.0, ge=0.0, le=3.0)
 
     actuator: bool = True
+
+    # When given, the side slope comes from real elevation along this line and
+    # `slope_deg` is ignored. The ground then changes under the machine as it
+    # drives, which a single slope number cannot represent.
+    field: FieldRef | None = None
 
     @field_validator("tractor", "implement")
     @classmethod

@@ -288,6 +288,76 @@ def field_slope(lat: float, lon: float, heading_deg: float,
     )
 
 
+MAX_PROFILE_STATIONS = 60
+
+
+def slope_profile(lat: float, lon: float, heading_deg: float, length_m: float,
+                  lateral_m: float = 8.0) -> dict:
+    """Side slope along a real guidance line, station by station.
+
+    A single slope number answers what a machine does on a uniform hillside.
+    This answers what it does in a particular field, which is a different
+    question: the ground rolls, so the disturbance changes under the machine
+    as it drives.
+
+    At each station the ground is sampled to the left and right of the line and
+    the cross gradient taken from the difference. Positive means the ground
+    rises to the right, so the machine drifts left, which matches the sign
+    convention the simulation uses throughout.
+
+    The station count is capped so one request stays reasonable for a free
+    public service; spacing widens for a longer run rather than the request
+    growing without bound.
+    """
+    length_m = max(20.0, min(5000.0, float(length_m)))
+    stations = min(MAX_PROFILE_STATIONS, max(4, int(length_m / 6.0) + 1))
+    spacing = length_m / (stations - 1)
+
+    psi = math.radians(heading_deg)
+    along = (math.sin(psi), math.cos(psi))
+    across = (math.cos(psi), -math.sin(psi))
+
+    metres_per_deg_lat = 111_320.0
+    metres_per_deg_lon = metres_per_deg_lat * max(0.05, math.cos(math.radians(lat)))
+
+    points = []
+    for i in range(stations):
+        d = i * spacing
+        for side in (-lateral_m, 0.0, lateral_m):
+            east = along[0] * d + across[0] * side
+            north = along[1] * d + across[1] * side
+            points.append((lon + east / metres_per_deg_lon,
+                           lat + north / metres_per_deg_lat))
+
+    heights = sample_elevations(points)
+
+    positions, slopes, elevations = [], [], []
+    for i in range(stations):
+        left, centre, right = heights[3 * i], heights[3 * i + 1], heights[3 * i + 2]
+        gradient = (right - left) / (2.0 * lateral_m)
+        positions.append(round(i * spacing, 3))
+        slopes.append(round(math.atan(gradient), 6))
+        elevations.append(round(centre, 2))
+
+    degrees = [math.degrees(a) for a in slopes]
+    return {
+        "positions_m": positions,
+        "side_slope_rad": slopes,
+        "side_slope_deg": [round(d, 3) for d in degrees],
+        "elevation_m": elevations,
+        "stations": stations,
+        "spacing_m": round(spacing, 2),
+        "length_m": round(length_m, 1),
+        "lateral_m": lateral_m,
+        "min_deg": round(min(degrees), 3),
+        "max_deg": round(max(degrees), 3),
+        "mean_abs_deg": round(sum(abs(d) for d in degrees) / len(degrees), 3),
+        "elevation_change_m": round(max(elevations) - min(elevations), 2),
+        "resolution_m": 1.0,
+        "attribution": ATTRIBUTION,
+    }
+
+
 def cache_stats() -> dict:
     return {
         "tiles": {"hits": _tiles.hits, "misses": _tiles.misses},

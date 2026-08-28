@@ -1,5 +1,8 @@
 # Implement-Aware Agricultural Guidance Simulator
 
+[![tests](https://github.com/FernLag/Implement-Aware-Guidance-Simulator/actions/workflows/tests.yml/badge.svg)](https://github.com/FernLag/Implement-Aware-Guidance-Simulator/actions/workflows/tests.yml)
+[![licence: MIT](https://img.shields.io/badge/licence-MIT-2E6B33)](LICENSE)
+
 A Python simulation of how an agricultural tractor tracks a planned path under
 autosteer, built to compare two competing error objectives:
 
@@ -22,7 +25,7 @@ is. Nearly all published path-tracking work optimises tractor error.
 git clone https://github.com/FernLag/Implement-Aware-Guidance-Simulator.git
 cd Implement-Aware-Guidance-Simulator
 python3 -m pip install -r requirements.txt
-python3 -m pytest tests/ -q          # 288 tests, ~90 s
+python3 -m pytest tests/ -q          # 305 tests, ~105 s
 ```
 
 Requires Python 3.11+. Dependencies are NumPy, Matplotlib, PyYAML and pytest.
@@ -168,6 +171,10 @@ Three results that were not expected going in, each documented where it lives:
   rather than through hitch articulation.
 - **A longer lookahead helps stability but hurts slope tracking.** Stage 2
   wants large `k`; Stage 3's `e_ss ∝ L_d` wants small.
+- **The hitch had no mechanical stop.** A sweep over the parameter space found
+  the implement winding past 1800 degrees of hitch angle, which a drawbar
+  cannot do. There is now a stop, and a run that reaches it is reported as
+  invalid rather than presented as a result.
 - **Skip and overlap do not follow either control objective.** A uniform
   lateral offset creates no skip at all, it shifts the whole field pattern
   without opening a gap. Skip is driven by implement *yaw*, so it falls
@@ -207,12 +214,21 @@ lays down tyre tracks, the worked swath, and the boundary lines where the two
 neighbouring passes should meet, so skip and overlap are visible directly
 rather than only as a number.
 
-**Real fields.** Enter a latitude and longitude in the United States and the
-simulator reads the actual ground slope there from USGS 3DEP elevation, sampled
-at 1 m resolution, and lays the USGS aerial photograph under the machine. The
-gradient is resolved along the guidance line and across it, because only the
-across component is the side slope the model uses: the same field driven north
-and driven east gives quite different numbers, which is the point.
+**Real fields, driving the model.** Enter a latitude and longitude in the
+United States and the simulator reads the ground there from USGS 3DEP
+elevation at 1 m resolution, lays the USGS aerial photograph under the machine,
+and **runs the simulation on that ground**. Not a single slope number: the side
+slope is sampled every few metres along the guidance line, so the disturbance
+changes under the machine as it drives.
+
+The difference is visible in the result. On a uniform hillside the tractor is
+pushed one way and holds there. On a real Palouse field, where the side slope
+runs from -12.6 to +3.4 degrees over 180 m, the error wanders across the line
+instead, because the ground changes sign beneath it.
+
+The gradient is resolved along the guidance line and across it, because only
+the across component is the side slope the model uses: the same field driven
+north and driven east gives quite different numbers.
 
 Those requests are made by the server, not by your browser, so the content
 security policy stays same-origin and no request goes from a visitor to a third
@@ -350,7 +366,7 @@ aggsim/
     tuning.py       dual-objective gain search (Stage 6)
 scripts/          one demo script per stage, plus asset and audit tools
 web/              browser interface (Flask), separate from the simulation core
-tests/            288 tests
+tests/            305 tests
 ```
 
 ### Conventions
@@ -397,6 +413,11 @@ shipping Stages 0–6 if the environment takes more than about two weeks.
 
 ## Testing
 
+The suite is offline by design. `tests/conftest.py` closes the socket layer for
+the whole run, so a test that tried to reach USGS fails loudly instead of
+depending on a public service being up. CI runs it on Python 3.11 and 3.12
+along with the security audit.
+
 ```bash
 python3 -m pytest tests/ -q                    # everything
 python3 -m pytest tests/test_stage4.py -q      # one stage
@@ -422,6 +443,16 @@ Three tests are called for by name in the project brief:
   implement edge error reduces *exactly* to tractor cross-track error
   (`np.array_equal`, not `approx`). Three further tests confirm each degenerate
   condition is individually necessary, so it cannot pass for the wrong reason.
+
+---
+
+## Licence
+
+MIT, see [LICENSE](LICENSE). Manufacturer names, model numbers and brand
+liveries are the trademarks of their owners and are used only to identify the
+machines whose published specifications the catalog cites. Aerial imagery and
+elevation are courtesy of the U.S. Geological Survey and are in the public
+domain.
 
 ---
 

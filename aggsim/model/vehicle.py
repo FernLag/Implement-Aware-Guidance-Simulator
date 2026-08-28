@@ -57,11 +57,16 @@ def from_tractor(tractor) -> VehicleParams:
     )
 
 
-def _terrain_terms(v: float, terrain) -> tuple[float, float]:
-    """(effective forward speed, signed lateral drift) for a terrain, or none."""
+def _terrain_terms(v: float, terrain, x: float = 0.0) -> tuple[float, float]:
+    """(effective forward speed, signed lateral drift) at a position.
+
+    Position matters only when the terrain carries a profile. With a single
+    slope number the answer is the same everywhere, which is what every
+    earlier stage assumed.
+    """
     if terrain is None:
         return v, 0.0
-    return v * terrain.speed_factor, terrain.lateral_drift
+    return v * terrain.speed_factor, terrain.drift_at(x)
 
 
 def kinematic_derivative(
@@ -76,7 +81,7 @@ def kinematic_derivative(
     steady sideslip.
     """
     theta = state_vec[2]
-    v_eff, drift = _terrain_terms(v, terrain)
+    v_eff, drift = _terrain_terms(v, terrain, state_vec[0])
     # Left-of-heading unit vector is (-sin theta, cos theta).
     return np.array(
         [
@@ -131,7 +136,7 @@ def augmented_derivative(
 ) -> np.ndarray:
     """Derivative of the augmented state (x, y, theta, delta)."""
     theta, delta = vec[2], vec[3]
-    v_eff, drift = _terrain_terms(v, terrain)
+    v_eff, drift = _terrain_terms(v, terrain, vec[0])
     return np.array(
         [
             v_eff * np.cos(theta) - drift * np.sin(theta),
@@ -173,7 +178,7 @@ def plant_derivative(
     tractor heading so the state stays well defined.
     """
     theta, delta, theta_i = vec[2], vec[3], vec[4]
-    v_eff, drift = _terrain_terms(v, terrain)
+    v_eff, drift = _terrain_terms(v, terrain, vec[0])
     theta_dot = (v_eff / wheelbase) * np.tan(delta)
 
     delta_dot = (
@@ -186,7 +191,7 @@ def plant_derivative(
         # The implement drifts at its own rate (see Terrain: at ratio 1.0 the
         # steady-state hitch angle is exactly zero, so side-draft contributes
         # no steady divergence).
-        drift_i = drift if terrain is None else terrain.implement_drift
+        drift_i = drift if terrain is None else terrain.implement_drift_at(vec[0])
         theta_i_dot = hitch_angle_derivative(
             theta, theta_i, theta_dot, v_eff, drift, drift_i, geometry
         )

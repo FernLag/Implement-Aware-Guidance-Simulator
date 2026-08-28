@@ -15,13 +15,14 @@ actuator rather than to a coincidental change elsewhere.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Callable
 
 import numpy as np
 
 from ..config.steering import SteeringParams
 from ..config.terrain import Terrain
-from ..geometry.abline import ABLine
+from ..geometry.abline import ABLine, wrap_angle
 from ..model.state import State
 from ..model.implement import ImplementGeometry, edge_errors, implement_position
 from ..model.vehicle import VehicleParams, rk4_step_plant
@@ -56,6 +57,11 @@ class SimLog:
     implement_cross_track: np.ndarray | None = None  # implement centreline
     edge_left: np.ndarray | None = None  # left edge placement error
     edge_right: np.ndarray | None = None  # right edge placement error
+    # True when the hitch reached its mechanical stop at any point. Past that
+    # the one-trailer kinematics describe a machine folded into itself, so the
+    # run is reported as invalid rather than presented as a result.
+    jackknifed: bool = False
+    jackknife_time: float | None = None
 
     @property
     def worst_edge(self) -> np.ndarray:
@@ -95,6 +101,8 @@ def simulate(
 ) -> SimLog:
     """Integrate the vehicle under a controller, logging error each step."""
     n = config.n_steps
+    jackknifed = False
+    jackknife_time = None
     t = np.zeros(n + 1)
     xs = np.zeros(n + 1)
     ys = np.zeros(n + 1)
@@ -150,6 +158,17 @@ def simulate(
                 vec[3] = float(
                     np.clip(vec[3], -params.max_steer_angle, params.max_steer_angle)
                 )
+            if geometry is not None and not geometry.is_rigid:
+                # Hold the hitch at its stop rather than letting the implement
+                # rotate freely. Before this the model would happily wind the
+                # hitch angle past a full turn, which a drawbar cannot do.
+                limit = geometry.max_hitch_angle
+                relative = wrap_angle(vec[4] - vec[2])
+                if abs(relative) > limit:
+                    vec[4] = vec[2] + math.copysign(limit, relative)
+                    if not jackknifed:
+                        jackknifed = True
+                        jackknife_time = (i + 1) * config.dt
 
     return SimLog(
         t=t, x=xs, y=ys, theta=thetas,
@@ -158,4 +177,6 @@ def simulate(
         implement_cross_track=imp_err if geometry is not None else None,
         edge_left=edge_l if geometry is not None else None,
         edge_right=edge_r if geometry is not None else None,
+        jackknifed=jackknifed,
+        jackknife_time=jackknife_time,
     )

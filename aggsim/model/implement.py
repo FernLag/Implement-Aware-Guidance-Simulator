@@ -55,6 +55,14 @@ import numpy as np
 # slaved to the tractor's, so the limit is the mounted case.
 RIGID_WHEELBASE_TOL = 1e-9
 
+# A drawbar cannot swing past the tractor. Beyond roughly this angle a real
+# implement fouls the wheels or the drawbar reaches its stop, and past 90
+# degrees the one-trailer model is describing something that cannot happen.
+# No manufacturer publishes the mechanical limit, so this is an assumption,
+# and a run that reaches it is flagged rather than quietly continued: once the
+# hitch is against its stop the kinematics here no longer describe the machine.
+DEFAULT_MAX_HITCH_ANGLE = 1.4835  # rad, 85 degrees
+
 
 @dataclass(frozen=True)
 class ImplementGeometry:
@@ -64,6 +72,7 @@ class ImplementGeometry:
     working_width: float  # m
     hitch_distance: float = 0.0  # a: tractor rear axle -> hitch point, m
     implement_wheelbase: float = 0.0  # b: hitch -> implement axle, m
+    max_hitch_angle: float = DEFAULT_MAX_HITCH_ANGLE  # rad, assumed
 
     def __post_init__(self) -> None:
         if self.type not in ("mounted", "trailed"):
@@ -72,6 +81,8 @@ class ImplementGeometry:
             raise ValueError("working width must be non-negative")
         if self.hitch_distance < 0 or self.implement_wheelbase < 0:
             raise ValueError("hitch geometry must be non-negative")
+        if not 0 < self.max_hitch_angle <= np.pi:
+            raise ValueError("max_hitch_angle must lie in (0, pi]")
 
     @property
     def half_width(self) -> float:
