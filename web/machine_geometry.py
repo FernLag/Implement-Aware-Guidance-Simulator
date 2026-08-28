@@ -112,6 +112,10 @@ def machine_geometry(tractor, implement, geometry) -> dict:
         payload["implement"] = {
             "name": implement.name,
             "type": geometry.type,
+            # Decides which tools are drawn along the bar: discs, tines, row
+            # units or laser modules. Appearance only.
+            "draft_class": implement.draft_class or "",
+            "manufacturer": implement.manufacturer,
             "working_width": {"value": round(geometry.working_width, 3),
                               "sourced": not implement.working_width.assumed},
             "hitch_distance": {"value": round(geometry.hitch_distance, 3), "sourced": False},

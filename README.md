@@ -195,9 +195,17 @@ only a control one.
 
 A **3D view** plays the pass back with the machine on tilted ground, the hitch
 articulating, and the worked swath painted behind it, which makes the implement
-lag visible in a way a line chart does not. It is drawn by a small hand written
+lag visible in a way a line chart does not. It is drawn by a hand written
 projection renderer, no library, because the content security policy forbids
 loading one and the geometry is boxes and prisms.
+
+The view draws a tapered bonnet, a cab with posts and glass, an exhaust stack,
+fenders, front weights, tread lugs and rims on every wheel, and tools along the
+implement bar chosen by its draft class: discs for a harrow, row units for a
+planter, tines for a cultivator, modules for a laser weeder. On the ground it
+lays down tyre tracks, the worked swath, and the boundary lines where the two
+neighbouring passes should meet, so skip and overlap are visible directly
+rather than only as a number.
 
 Wheel diameters in that view are **derived from the catalogued tyre codes**,
 so a `480/80R50` rolls at its real 2.04 m. Track width, body size and hitch

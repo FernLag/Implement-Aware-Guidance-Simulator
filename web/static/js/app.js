@@ -405,10 +405,7 @@
           b.setAttribute("aria-pressed", "false");
         });
         btn.setAttribute("aria-pressed", "true");
-        scene.mode = btn.getAttribute("data-view");
-        if (scene.mode === "chase") { scene.yaw = -0.72; scene.pitch = 0.42; scene.distance = 26; }
-        if (scene.mode === "side") { scene.yaw = 0; scene.pitch = 0.12; scene.distance = 30; }
-        if (scene.mode === "top") { scene.yaw = 0; scene.pitch = 1.45; scene.distance = 44; }
+        scene.applyPreset(btn.getAttribute("data-view"));
         drawFrame(frame);
       });
     });
@@ -421,9 +418,13 @@
     canvas.addEventListener("pointermove", function (ev) {
       if (!dragging) { return; }
       scene.yaw += (ev.clientX - lastX) * 0.008;
-      scene.pitch = Math.max(0.05, Math.min(1.5, scene.pitch + (ev.clientY - lastY) * 0.006));
+      scene.pitch = Math.max(0.03, Math.min(1.48, scene.pitch + (ev.clientY - lastY) * 0.006));
       lastX = ev.clientX; lastY = ev.clientY;
       scene.mode = "free";
+      // Dragging leaves the presets, so none of them should read as active.
+      document.querySelectorAll("[data-view]").forEach(function (b) {
+        b.setAttribute("aria-pressed", "false");
+      });
       drawFrame(frame);
     });
     canvas.addEventListener("pointerup", function (ev) {
@@ -432,7 +433,7 @@
     });
     canvas.addEventListener("wheel", function (ev) {
       ev.preventDefault();
-      scene.distance = Math.max(8, Math.min(90, scene.distance + ev.deltaY * 0.03));
+      scene.distance = Math.max(6, Math.min(120, scene.distance + ev.deltaY * 0.04));
       drawFrame(frame);
     }, { passive: false });
 

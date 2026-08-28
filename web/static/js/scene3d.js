@@ -1,54 +1,66 @@
-/* A small 3D view of the machine, written by hand.
+/* A 3D view of the machine, written by hand.
 
-   No library. The content security policy forbids loading one, and the
-   geometry needed here is boxes and prisms, which is a few hundred lines of
-   arithmetic. Faces are projected with a perspective camera, sorted back to
-   front and filled flat. That is enough for solid shapes with no
-   transparency, and it keeps the page dependency free.
+   No library: the content security policy forbids loading one, and the shapes
+   needed here are boxes and prisms.
 
-   WHAT THIS IS AND IS NOT. The model underneath is planar: position, heading,
-   steering angle and hitch angle. There is no roll, pitch or suspension, so
-   this view shows a planar result in three dimensions rather than adding
-   physics to it. The ground is tilted by the modelled side slope because that
-   angle is a real input; the machine sits on the slope and does not lean
-   relative to it, which is what the model says. */
+   CAMERA. An earlier version rotated points by yaw and pitch directly and got
+   both the views and the clipping wrong: "above" collapsed sixty metres of
+   field into a few pixels, and depths could land near the clip plane where the
+   projection scale runs to a thousand pixels per metre, so one dark tyre face
+   would fill the screen. This builds a proper camera basis instead, and clips
+   polygons against the near plane rather than discarding whole faces.
+
+   WHAT THIS SHOWS. The model underneath is planar: position, heading, steering
+   angle, hitch angle. There is no roll, pitch or suspension. The ground tilts
+   because side slope is a real modelled input; the machine sits on the slope
+   and does not lean relative to it, which is what the model says. */
 
 (function () {
   "use strict";
 
+  var NEAR = 0.6;
+
   var COL = {
-    ground: [214, 201, 172],
-    grid: [190, 175, 143],
-    line: [51, 41, 29],
-    swath: [196, 150, 118],
-    body: [76, 90, 58],
-    cab: [96, 110, 76],
-    glass: [173, 186, 160],
-    tyre: [38, 33, 26],
-    rim: [190, 175, 143],
-    imp: [163, 90, 50],
-    bar: [122, 66, 36]
+    soil:      [206, 191, 160],
+    soilWork:  [150, 124, 92],
+    soilDark:  [186, 169, 137],
+    line:      [46, 37, 26],
+    body:      [74, 88, 56],
+    bodyDark:  [58, 70, 44],
+    hood:      [86, 100, 64],
+    cab:       [64, 76, 50],
+    glass:     [176, 190, 168],
+    post:      [44, 52, 34],
+    roof:      [92, 106, 70],
+    tyre:      [46, 40, 32],
+    lug:       [34, 29, 23],
+    rim:       [176, 158, 120],
+    hub:       [140, 124, 94],
+    steel:     [108, 98, 82],
+    imp:       [163, 90, 50],
+    impDark:   [126, 68, 37],
+    tool:      [92, 84, 72],
+    shadow:    [120, 108, 86]
   };
-  var LIGHT = normalise([0.42, -0.55, 0.72]);
+  var LIGHT = unit([0.38, -0.48, 0.79]);
 
   function sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+  function add(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
+  function mul(a, k) { return [a[0] * k, a[1] * k, a[2] * k]; }
+  function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
   function cross(a, b) {
     return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
   }
-  function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
-  function normalise(v) {
-    var n = Math.sqrt(dot(v, v)) || 1;
-    return [v[0] / n, v[1] / n, v[2] / n];
-  }
-  function shade(rgb, n) {
-    var k = 0.55 + 0.45 * Math.max(0, dot(n, LIGHT));
-    return "rgb(" + Math.round(rgb[0] * k) + "," + Math.round(rgb[1] * k) + "," +
-      Math.round(rgb[2] * k) + ")";
+  function unit(v) { var n = Math.sqrt(dot(v, v)) || 1; return mul(v, 1 / n); }
+
+  function shade(rgb, n, k) {
+    var l = 0.5 + 0.5 * Math.max(0, dot(n, LIGHT));
+    l *= (k === undefined ? 1 : k);
+    return "rgb(" + Math.round(rgb[0] * l) + "," + Math.round(rgb[1] * l) + "," +
+      Math.round(rgb[2] * l) + ")";
   }
 
-  /* Place a point in machine coordinates into the world, then tilt the world
-     by the side slope. Order matters: the machine is placed on flat ground and
-     the whole scene is tilted, which is the same as driving across a slope. */
+  /* Machine coordinates into the world, then tilt the world by the slope. */
   function place(local, origin, yaw, tilt) {
     var c = Math.cos(yaw), s = Math.sin(yaw);
     var x = origin[0] + local[0] * c - local[1] * s;
@@ -58,237 +70,379 @@
     return [x, y * ct - z * st, y * st + z * ct];
   }
 
+  /* ---------------- camera ---------------- */
+
   function Scene(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
-    this.yaw = -0.72;
-    this.pitch = 0.42;
-    this.distance = 26;
     this.mode = "chase";
+    this.applyPreset("chase");
   }
 
-  Scene.prototype.project = function (p, target, w, h) {
-    var d = sub(p, target);
-    var cy = Math.cos(this.yaw), sy = Math.sin(this.yaw);
-    var x1 = d[0] * cy - d[1] * sy;
-    var y1 = d[0] * sy + d[1] * cy;
-    var cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
-    var y2 = y1 * cp - d[2] * sp;
-    var z2 = y1 * sp + d[2] * cp;
-    var depth = z2 + this.distance;
-    if (depth < 0.35) { return null; }
-    var f = (h * 0.9) / depth;
-    return { x: w / 2 + x1 * f, y: h / 2 - y2 * f, depth: depth };
+  Scene.prototype.applyPreset = function (mode) {
+    this.mode = mode;
+    if (mode === "chase") { this.yaw = 0.0; this.pitch = 0.30; this.distance = 22; }
+    if (mode === "side")  { this.yaw = Math.PI / 2; this.pitch = 0.06; this.distance = 32; }
+    if (mode === "top")   { this.yaw = 0.0; this.pitch = 1.40; this.distance = 46; }
   };
+
+  Scene.prototype.basis = function (target) {
+    // Pitch is elevation above the horizon. Clamped below a right angle so the
+    // right vector never degenerates when looking straight down.
+    var pitch = Math.max(0.03, Math.min(1.48, this.pitch));
+    var cp = Math.cos(pitch), sp = Math.sin(pitch);
+    var eye = [
+      target[0] - this.distance * cp * Math.cos(this.yaw),
+      target[1] - this.distance * cp * Math.sin(this.yaw),
+      target[2] + this.distance * sp
+    ];
+    var f = unit(sub(target, eye));
+    var r = unit(cross(f, [0, 0, 1]));
+    var u = cross(r, f);
+    return { eye: eye, f: f, r: r, u: u };
+  };
+
+  /* Camera space, then Sutherland-Hodgman against the near plane, so a face
+     that straddles the camera is trimmed rather than dropped or exploded. */
+  function toCamera(p, b) {
+    var v = sub(p, b.eye);
+    return { x: dot(v, b.r), y: dot(v, b.u), z: dot(v, b.f) };
+  }
+
+  function clipNear(poly) {
+    var out = [];
+    for (var i = 0; i < poly.length; i++) {
+      var a = poly[i], c = poly[(i + 1) % poly.length];
+      var ain = a.z >= NEAR, cin = c.z >= NEAR;
+      if (ain) { out.push(a); }
+      if (ain !== cin) {
+        var t = (NEAR - a.z) / (c.z - a.z);
+        out.push({ x: a.x + (c.x - a.x) * t, y: a.y + (c.y - a.y) * t, z: NEAR });
+      }
+    }
+    return out;
+  }
 
   Scene.prototype.draw = function (faces, target) {
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
     var w = this.canvas.clientWidth, h = this.canvas.clientHeight;
-    if (this.canvas.width !== w * dpr) {
-      this.canvas.width = w * dpr;
-      this.canvas.height = h * dpr;
+    if (!w || !h) { return; }
+    if (this.canvas.width !== Math.round(w * dpr)) {
+      this.canvas.width = Math.round(w * dpr);
+      this.canvas.height = Math.round(h * dpr);
     }
     var ctx = this.ctx;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#EFE6D0";
+    ctx.fillStyle = "#E7DCC4";
     ctx.fillRect(0, 0, w, h);
 
-    var self = this, drawable = [];
-    faces.forEach(function (face) {
-      var pts = [], sum = 0, ok = true;
-      for (var i = 0; i < face.p.length; i++) {
-        var q = self.project(face.p[i], target, w, h);
-        if (!q) { ok = false; break; }
-        pts.push(q);
-        sum += q.depth;
+    var b = this.basis(target);
+    var focal = h * 0.86;
+    var list = [];
+
+    for (var i = 0; i < faces.length; i++) {
+      var face = faces[i];
+      var cam = [];
+      for (var j = 0; j < face.p.length; j++) { cam.push(toCamera(face.p[j], b)); }
+
+      if (face.cull !== false && face.p.length >= 3) {
+        // Backface culling. With painter's algorithm this removes most of the
+        // overdraw that made interior faces flicker through the surface.
+        var n = cross(sub(face.p[1], face.p[0]), sub(face.p[2], face.p[0]));
+        if (dot(n, sub(face.p[0], b.eye)) > 0) { continue; }
       }
-      if (!ok) { return; }
-      drawable.push({ pts: pts, depth: sum / pts.length, face: face });
-    });
 
-    drawable.sort(function (a, b) { return b.depth - a.depth; });
+      var poly = face.line ? cam.filter(function (q) { return q.z >= NEAR; }) : clipNear(cam);
+      if (poly.length < (face.line ? 2 : 3)) { continue; }
 
-    drawable.forEach(function (d) {
-      var f = d.face, pts = d.pts;
+      var pts = [], zsum = 0;
+      for (var k = 0; k < poly.length; k++) {
+        var q = poly[k];
+        pts.push({ x: w / 2 + q.x * focal / q.z, y: h / 2 - q.y * focal / q.z });
+        zsum += q.z;
+      }
+      list.push({ pts: pts, depth: zsum / poly.length, face: face });
+    }
+
+    list.sort(function (a, b2) { return b2.depth - a.depth; });
+
+    for (var m = 0; m < list.length; m++) {
+      var d = list[m], f = d.face, pts = d.pts;
       ctx.beginPath();
       ctx.moveTo(pts[0].x, pts[0].y);
-      for (var i = 1; i < pts.length; i++) { ctx.lineTo(pts[i].x, pts[i].y); }
-      ctx.closePath();
-      if (f.stroke) {
+      for (var q2 = 1; q2 < pts.length; q2++) { ctx.lineTo(pts[q2].x, pts[q2].y); }
+      if (f.line) {
         ctx.strokeStyle = f.stroke;
-        ctx.lineWidth = f.lineWidth || 1;
+        ctx.lineWidth = f.width || 1;
         ctx.stroke();
       } else {
-        var n = normalise(cross(sub(f.p[1], f.p[0]), sub(f.p[2], f.p[0])));
-        ctx.fillStyle = f.flat || shade(f.c, n);
-        ctx.fill();
-        if (f.edge) {
-          ctx.strokeStyle = "rgba(35,28,20,0.28)";
-          ctx.lineWidth = 1;
-          ctx.stroke();
+        ctx.closePath();
+        if (f.flat) {
+          ctx.fillStyle = f.flat;
+        } else {
+          var nn = unit(cross(sub(f.p[1], f.p[0]), sub(f.p[2], f.p[0])));
+          ctx.fillStyle = shade(f.c, nn, f.k);
         }
+        ctx.fill();
       }
-    });
+    }
   };
 
-  /* ---- primitives, in machine coordinates ---- */
+  /* ---------------- primitives ---------------- */
 
-  function box(out, cx, cy, cz, len, wid, hgt, colour, origin, yaw, tilt, localYaw) {
-    var hx = len / 2, hy = wid / 2, hz = hgt / 2;
-    var corners = [
-      [-hx, -hy, -hz], [hx, -hy, -hz], [hx, hy, -hz], [-hx, hy, -hz],
-      [-hx, -hy, hz], [hx, -hy, hz], [hx, hy, hz], [-hx, hy, hz]
-    ].map(function (c) {
-      var x = c[0], y = c[1];
-      if (localYaw) {
-        var cc = Math.cos(localYaw), ss = Math.sin(localYaw);
-        x = c[0] * cc - c[1] * ss;
-        y = c[0] * ss + c[1] * cc;
-      }
-      return place([cx + x, cy + y, cz + c[2]], origin, yaw, tilt);
-    });
-    [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6],
-     [1, 2, 6, 5], [3, 0, 4, 7]].forEach(function (idx) {
-      out.push({ p: idx.map(function (i) { return corners[i]; }), c: colour, edge: true });
-    });
+  function quad(out, a, b, c, d, colour, k) {
+    out.push({ p: [a, b, c, d], c: colour, k: k });
   }
 
-  function wheel(out, cx, cy, radius, width, colour, origin, yaw, tilt, steer) {
-    var sides = 12, hw = width / 2;
-    var ring = [];
+  /* A box, optionally tapered along its length, which is what makes a bonnet
+     read as a bonnet rather than a crate. */
+  function box(out, o, yaw, tilt, cx, cy, cz, len, wid, hgt, colour, opts) {
+    opts = opts || {};
+    var taper = opts.taper === undefined ? 1 : opts.taper;
+    var drop = opts.drop || 0;
+    var hx = len / 2, hy = wid / 2;
+    function v(sx, sy, sz) {
+      var t = sx > 0 ? taper : 1;
+      var top = sz > 0 ? hgt - (sx > 0 ? drop : 0) : 0;
+      return place([cx + sx * hx, cy + sy * hy * t, cz + top], o, yaw, tilt);
+    }
+    var p000 = v(-1, -1, 0), p100 = v(1, -1, 0), p110 = v(1, 1, 0), p010 = v(-1, 1, 0);
+    var p001 = v(-1, -1, 1), p101 = v(1, -1, 1), p111 = v(1, 1, 1), p011 = v(-1, 1, 1);
+    quad(out, p010, p110, p100, p000, colour, 0.72);
+    quad(out, p001, p101, p111, p011, colour, 1.0);
+    quad(out, p000, p100, p101, p001, colour, 0.86);
+    quad(out, p110, p010, p011, p111, colour, 0.86);
+    quad(out, p100, p110, p111, p101, colour, 0.94);
+    quad(out, p010, p000, p001, p011, colour, 0.78);
+  }
+
+  /* A wheel with tread lugs and a visible rim. */
+  function wheel(out, o, yaw, tilt, cx, cy, radius, width, steer, detail) {
+    var sides = detail ? 16 : 10, hw = width / 2;
+    var c = Math.cos(steer || 0), s = Math.sin(steer || 0);
+    function pt(ang, r, side) {
+      var x = Math.cos(ang) * r, z = Math.sin(ang) * r, y = side * hw;
+      return place([cx + x * c - y * s, cy + x * s + y * c, radius + z], o, yaw, tilt);
+    }
     for (var i = 0; i < sides; i++) {
-      var a = (i / sides) * Math.PI * 2;
-      ring.push([Math.cos(a) * radius, Math.sin(a) * radius]);
+      var a0 = (i / sides) * Math.PI * 2, a1 = ((i + 1) / sides) * Math.PI * 2;
+      quad(out, pt(a0, radius, -1), pt(a1, radius, -1), pt(a1, radius, 1), pt(a0, radius, 1),
+        COL.tyre, 0.95);
+      if (detail && i % 2 === 0) {
+        // Lugs, angled the way an agricultural tread is.
+        var lr = radius * 1.055;
+        quad(out, pt(a0, lr, -0.98), pt(a1, lr, -0.2), pt(a1, radius, -0.2), pt(a0, radius, -0.98),
+          COL.lug, 1.0);
+        quad(out, pt(a0, radius, 0.2), pt(a1, radius, 0.98), pt(a1, lr, 0.98), pt(a0, lr, 0.2),
+          COL.lug, 1.0);
+      }
     }
-    function pt(i, side) {
-      var r = ring[i], x = r[0], y = side * hw;
-      var cs = Math.cos(steer || 0), sn = Math.sin(steer || 0);
-      return place([cx + x * cs - y * sn, cy + x * sn + y * cs, radius + r[1]],
-        origin, yaw, tilt);
-    }
+    var rimR = radius * 0.58, face = [], hubFace = [];
     for (var j = 0; j < sides; j++) {
-      var k = (j + 1) % sides;
-      out.push({ p: [pt(j, -1), pt(k, -1), pt(k, 1), pt(j, 1)], c: colour });
+      face.push(pt((j / sides) * Math.PI * 2, rimR, 1.01));
+      hubFace.push(pt((j / sides) * Math.PI * 2, rimR * 0.34, 1.02));
     }
-    out.push({ p: ring.map(function (_, i) { return pt(i, 1); }), c: COL.rim });
+    out.push({ p: face, c: COL.rim, k: 1.0, cull: false });
+    out.push({ p: hubFace, c: COL.hub, k: 1.0, cull: false });
   }
 
-  /* ---- the machine ---- */
+  /* ---------------- the tractor ---------------- */
 
-  function buildMachine(out, g, pose, tilt) {
-    var origin = [pose.x, pose.y];
-    var yaw = pose.theta;
-    var L = g.wheelbase.value;
-    var track = g.track_width.value;
+  function buildTractor(out, g, pose, tilt) {
+    var o = [pose.x, pose.y], yaw = pose.theta;
+    var L = g.wheelbase.value, track = g.track_width.value;
     var rw = g.rear_wheel, fw = g.front_wheel;
     var b = g.body;
+    var axle = rw.diameter * 0.5;
+    var deck = axle * 0.92;
 
-    box(out, L * 0.46, 0, rw.diameter * 0.62, b.length * 0.72, b.width, b.height,
-      COL.body, origin, yaw, tilt);
-    box(out, L * 0.06, 0, rw.diameter * 0.62 + b.height * 0.78,
-      b.length * 0.42, b.width * 0.94, b.height * 0.92, COL.cab, origin, yaw, tilt);
-    box(out, L * 0.06, 0, rw.diameter * 0.62 + b.height * 1.34,
-      b.length * 0.44, b.width * 0.98, 0.06, COL.glass, origin, yaw, tilt);
+    // Chassis spine from rear axle to front axle.
+    box(out, o, yaw, tilt, L * 0.5, 0, deck * 0.55, L * 1.02, b.width * 0.34, deck * 0.34, COL.steel);
 
-    wheel(out, 0, track / 2, rw.diameter / 2, rw.width, COL.tyre, origin, yaw, tilt, 0);
-    wheel(out, 0, -track / 2, rw.diameter / 2, rw.width, COL.tyre, origin, yaw, tilt, 0);
-    wheel(out, L, track / 2 * 0.92, fw.diameter / 2, fw.width, COL.tyre, origin, yaw, tilt, pose.delta);
-    wheel(out, L, -track / 2 * 0.92, fw.diameter / 2, fw.width, COL.tyre, origin, yaw, tilt, pose.delta);
+    // Bonnet, tapered and dropping towards the front.
+    box(out, o, yaw, tilt, L * 0.72, 0, deck, L * 0.78, b.width * 0.78, b.height * 0.86,
+      COL.hood, { taper: 0.74, drop: b.height * 0.3 });
+    // Grille.
+    box(out, o, yaw, tilt, L * 1.12, 0, deck + b.height * 0.12, 0.1, b.width * 0.56,
+      b.height * 0.44, COL.bodyDark);
+    // Front weight pack.
+    box(out, o, yaw, tilt, L * 1.22, 0, deck * 0.62, 0.34, b.width * 0.5, b.height * 0.44,
+      COL.steel);
 
-    if (!g.implement) { return; }
+    // Cab: floor, four posts, glass, roof.
+    var cabL = L * 0.62, cabW = b.width * 0.96, cabH = b.height * 1.24;
+    var cabX = L * 0.06, cabZ = deck + b.height * 0.12;
+    box(out, o, yaw, tilt, cabX, 0, cabZ, cabL, cabW, 0.1, COL.cab);
+    [[cabL / 2, cabW / 2], [cabL / 2, -cabW / 2], [-cabL / 2, cabW / 2], [-cabL / 2, -cabW / 2]]
+      .forEach(function (c) {
+        box(out, o, yaw, tilt, cabX + c[0], c[1], cabZ, 0.09, 0.09, cabH, COL.post);
+      });
+    quad(out,
+      place([cabX + cabL / 2, cabW / 2, cabZ + 0.1], o, yaw, tilt),
+      place([cabX + cabL / 2, -cabW / 2, cabZ + 0.1], o, yaw, tilt),
+      place([cabX + cabL / 2, -cabW / 2, cabZ + cabH], o, yaw, tilt),
+      place([cabX + cabL / 2, cabW / 2, cabZ + cabH], o, yaw, tilt), COL.glass, 0.9);
+    quad(out,
+      place([cabX - cabL / 2, -cabW / 2, cabZ + 0.1], o, yaw, tilt),
+      place([cabX - cabL / 2, cabW / 2, cabZ + 0.1], o, yaw, tilt),
+      place([cabX - cabL / 2, cabW / 2, cabZ + cabH], o, yaw, tilt),
+      place([cabX - cabL / 2, -cabW / 2, cabZ + cabH], o, yaw, tilt), COL.glass, 0.9);
+    [1, -1].forEach(function (side) {
+      quad(out,
+        place([cabX - cabL / 2, side * cabW / 2, cabZ + 0.1], o, yaw, tilt),
+        place([cabX + cabL / 2, side * cabW / 2, cabZ + 0.1], o, yaw, tilt),
+        place([cabX + cabL / 2, side * cabW / 2, cabZ + cabH], o, yaw, tilt),
+        place([cabX - cabL / 2, side * cabW / 2, cabZ + cabH], o, yaw, tilt), COL.glass, 0.82);
+    });
+    box(out, o, yaw, tilt, cabX, 0, cabZ + cabH, cabL * 1.1, cabW * 1.12, 0.13, COL.roof);
 
-    var im = g.implement;
-    var a = im.hitch_distance.value;
-    var bb = im.implement_wheelbase.value;
+    // Exhaust stack up the right of the bonnet.
+    box(out, o, yaw, tilt, L * 0.52, cabW * 0.42, deck + b.height * 0.5, 0.12, 0.12,
+      b.height * 1.1, COL.steel);
+
+    // Fenders over the rear wheels.
+    [1, -1].forEach(function (side) {
+      box(out, o, yaw, tilt, 0, side * (track / 2 - rw.width * 0.1), axle * 1.12,
+        rw.diameter * 0.92, rw.width * 1.25, 0.12, COL.bodyDark);
+    });
+
+    // Drawbar.
+    box(out, o, yaw, tilt, -L * 0.22, 0, deck * 0.42, L * 0.44, 0.14, 0.12, COL.steel);
+
+    wheel(out, o, yaw, tilt, 0, track / 2, rw.diameter / 2, rw.width, 0, true);
+    wheel(out, o, yaw, tilt, 0, -track / 2, rw.diameter / 2, rw.width, 0, true);
+    wheel(out, o, yaw, tilt, L, track / 2 * 0.9, fw.diameter / 2, fw.width, pose.delta, true);
+    wheel(out, o, yaw, tilt, L, -track / 2 * 0.9, fw.diameter / 2, fw.width, pose.delta, true);
+  }
+
+  /* ---------------- the implement ---------------- */
+
+  function buildImplement(out, im, hx, hy, ix, iy, yawT, yawI, tilt) {
     var width = im.working_width.value;
     var depth = im.frame_depth.value;
+    var bb = im.implement_wheelbase.value;
+    var o = [ix, iy];
 
-    // The hitch sits behind the rear axle in the tractor frame; the implement
-    // hangs off it at its own heading, which is why it is built in world
-    // coordinates rather than as a child of the tractor.
-    var hx = pose.x - a * Math.cos(yaw);
-    var hy = pose.y - a * Math.sin(yaw);
-    var iyaw = pose.thetaImplement;
-    var ix = hx - bb * Math.cos(iyaw);
-    var iy = hy - bb * Math.sin(iyaw);
+    // Drawbar from the tractor hitch back to the implement frame, drawn in the
+    // implement frame so it swings with the hitch angle.
+    box(out, [hx, hy], yawI, tilt, -bb / 2, 0, 0.62, bb, 0.16, 0.14, COL.impDark);
+    // Hitch clevis at the tractor end.
+    box(out, [hx, hy], yawT, tilt, 0.06, 0, 0.6, 0.24, 0.2, 0.2, COL.steel);
 
-    box(out, bb / 2, 0, 0.55, bb, 0.18, 0.16, COL.bar, [hx, hy], iyaw, tilt, Math.PI);
-    box(out, 0, 0, 0.62, depth, width, 0.28, COL.imp, [ix, iy], iyaw, tilt);
-    box(out, 0, width / 2 - 0.12, 0.5, depth * 0.9, 0.24, 0.5, COL.bar, [ix, iy], iyaw, tilt);
-    box(out, 0, -width / 2 + 0.12, 0.5, depth * 0.9, 0.24, 0.5, COL.bar, [ix, iy], iyaw, tilt);
+    // Main frame and the two wing spars.
+    box(out, o, yawI, tilt, 0, 0, 0.66, depth * 0.5, width, 0.22, COL.imp);
+    box(out, o, yawI, tilt, depth * 0.42, 0, 0.7, 0.18, width * 0.96, 0.16, COL.impDark);
+    box(out, o, yawI, tilt, -depth * 0.42, 0, 0.7, 0.18, width * 0.96, 0.16, COL.impDark);
+
+    // Working tools along the bar. The count scales with width, capped so a
+    // twenty metre machine does not cost a thousand faces.
+    var kind = (im.draft_class || "") + " " + (im.type || "");
+    var n = Math.max(6, Math.min(28, Math.round(width * 1.6)));
+    for (var i = 0; i < n; i++) {
+      var y = -width / 2 + (i + 0.5) * (width / n);
+      if (/planter/.test(kind)) {
+        box(out, o, yawI, tilt, -depth * 0.18, y, 0.28, depth * 0.5, 0.3, 0.5, COL.tool);
+        wheel(out, o, yawI, tilt, -depth * 0.42, y, 0.24, 0.08, 0, false);
+      } else if (/disk|disc|catros|joker|turbomax|excelerator/.test(kind)) {
+        wheel(out, o, yawI, tilt, depth * 0.2, y, 0.29, 0.05, 0.32, false);
+        wheel(out, o, yawI, tilt, -depth * 0.24, y, 0.29, 0.05, -0.32, false);
+      } else if (/laserweeder|verdant|sharpshooter/.test(kind)) {
+        box(out, o, yawI, tilt, 0, y, 0.78, depth * 0.62, width / n * 0.82, 0.36, COL.tool);
+      } else {
+        // Tines, angled back and down.
+        box(out, o, yawI, tilt, -depth * 0.1, y, 0.12, 0.12, 0.1, 0.58, COL.tool);
+        box(out, o, yawI, tilt, -depth * 0.1, y, 0.06, 0.3, 0.14, 0.1, COL.steel);
+      }
+    }
 
     if (im.type === "trailed") {
-      var tw = Math.min(width * 0.55, 3.2);
-      wheel(out, -depth * 0.35, tw / 2, 0.52, 0.3, COL.tyre, [ix, iy], iyaw, tilt, 0);
-      wheel(out, -depth * 0.35, -tw / 2, 0.52, 0.3, COL.tyre, [ix, iy], iyaw, tilt, 0);
+      var tw = Math.min(width * 0.5, 3.4);
+      wheel(out, o, yawI, tilt, -depth * 0.55, tw / 2, 0.55, 0.32, 0, true);
+      wheel(out, o, yawI, tilt, -depth * 0.55, -tw / 2, 0.55, 0.32, 0, true);
     }
-  }
 
-  /* ---- ground, guidance line and worked swath ---- */
-
-  function buildGround(out, centreX, tilt) {
-    var half = 34, x0 = Math.floor((centreX - half) / 4) * 4;
-    out.push({
-      p: [place([x0 - 4, -half, 0], [0, 0], 0, tilt),
-          place([x0 + half * 2, -half, 0], [0, 0], 0, tilt),
-          place([x0 + half * 2, half, 0], [0, 0], 0, tilt),
-          place([x0 - 4, half, 0], [0, 0], 0, tilt)],
-      c: COL.ground
+    // Edge markers, so the working edge the metric refers to is visible.
+    [1, -1].forEach(function (side) {
+      box(out, o, yawI, tilt, 0, side * width / 2, 0.66, depth * 0.6, 0.1, 0.95, COL.impDark);
     });
-    for (var gx = x0; gx < x0 + half * 2; gx += 4) {
-      out.push({
-        p: [place([gx, -half, 0.01], [0, 0], 0, tilt),
-            place([gx, half, 0.01], [0, 0], 0, tilt)],
-        stroke: "rgba(120,104,76,0.32)", lineWidth: 1
-      });
+  }
+
+  /* ---------------- ground ---------------- */
+
+  function buildGround(out, cx, tilt, width) {
+    var half = 30, x0 = Math.floor((cx - half * 0.55) / 5) * 5;
+    var x1 = x0 + half * 1.9;
+    function g(x, y, z) { return place([x, y, z || 0], [0, 0], 0, tilt); }
+
+    for (var gx = x0; gx < x1; gx += 5) {
+      for (var gy = -half; gy < half; gy += 5) {
+        var band = Math.abs(gy) < (width || 0) / 2 ? COL.soilDark : COL.soil;
+        out.push({ p: [g(gx, gy), g(gx + 5, gy), g(gx + 5, gy + 5), g(gx, gy + 5)],
+                   c: band, k: 0.97 + ((gx + gy) % 10 === 0 ? 0.03 : 0), cull: false });
+      }
     }
-    for (var gy = -half; gy <= half; gy += 4) {
-      out.push({
-        p: [place([x0 - 4, gy, 0.01], [0, 0], 0, tilt),
-            place([x0 + half * 2, gy, 0.01], [0, 0], 0, tilt)],
-        stroke: "rgba(120,104,76,0.22)", lineWidth: 1
-      });
+    // Drill rows, for a sense of scale and direction of travel.
+    for (var ry = -half; ry <= half; ry += 0.76) {
+      out.push({ p: [g(x0, ry, 0.012), g(x1, ry, 0.012)], line: true,
+                 stroke: "rgba(120,100,72,0.16)", width: 1 });
     }
-    for (var dx = x0; dx < x0 + half * 2; dx += 2) {
-      out.push({
-        p: [place([dx, 0, 0.03], [0, 0], 0, tilt),
-            place([dx + 1.1, 0, 0.03], [0, 0], 0, tilt)],
-        stroke: "rgba(35,28,20,0.85)", lineWidth: 2.5
+    // The guidance line, dashed.
+    for (var dx = x0; dx < x1; dx += 2.4) {
+      out.push({ p: [g(dx, 0, 0.05), g(dx + 1.3, 0, 0.05)], line: true,
+                 stroke: "rgba(40,32,22,0.92)", width: 3 });
+    }
+    // Where the neighbouring passes should meet this one.
+    if (width) {
+      [width / 2, -width / 2].forEach(function (y) {
+        out.push({ p: [g(x0, y, 0.04), g(x1, y, 0.04)], line: true,
+                   stroke: "rgba(40,32,22,0.34)", width: 1.6 });
       });
     }
   }
 
-  function buildSwath(out, s, upTo, tilt, halfWidth) {
-    var stepBack = Math.max(1, Math.floor(upTo / 160));
-    for (var i = Math.max(0, upTo - 900); i < upTo - stepBack; i += stepBack) {
-      var j = i + stepBack;
-      var a = edgePair(s, i, halfWidth), b = edgePair(s, j, halfWidth);
-      if (!a || !b) { continue; }
-      out.push({
-        p: [place([a.lx, a.ly, 0.02], [0, 0], 0, tilt),
-            place([b.lx, b.ly, 0.02], [0, 0], 0, tilt),
-            place([b.rx, b.ry, 0.02], [0, 0], 0, tilt),
-            place([a.rx, a.ry, 0.02], [0, 0], 0, tilt)],
-        flat: "rgba(163,90,50,0.30)"
-      });
-    }
-  }
-
-  function edgePair(s, i, halfWidth) {
-    if (!s.theta_implement || s.x[i] === null) { return null; }
-    var a = s.geomA, b = s.geomB;
+  function edgePair(s, i, a, b, halfWidth) {
+    if (s.x[i] === null || !s.theta_implement) { return null; }
     var th = s.theta[i], ti = s.theta_implement[i];
     var hx = s.x[i] - a * Math.cos(th), hy = s.y[i] - a * Math.sin(th);
     var ix = hx - b * Math.cos(ti), iy = hy - b * Math.sin(ti);
     var nx = -Math.sin(ti), ny = Math.cos(ti);
-    return {
-      lx: ix + nx * halfWidth, ly: iy + ny * halfWidth,
-      rx: ix - nx * halfWidth, ry: iy - ny * halfWidth
-    };
+    return { lx: ix + nx * halfWidth, ly: iy + ny * halfWidth,
+             rx: ix - nx * halfWidth, ry: iy - ny * halfWidth };
   }
 
-  /* ---- public interface ---- */
+  function buildSwath(out, s, upTo, tilt, a, b, halfWidth) {
+    var step = Math.max(1, Math.floor(upTo / 130));
+    for (var i = Math.max(0, upTo - 1100); i < upTo - step; i += step) {
+      var p = edgePair(s, i, a, b, halfWidth), q = edgePair(s, i + step, a, b, halfWidth);
+      if (!p || !q) { continue; }
+      out.push({
+        p: [place([p.lx, p.ly, 0.03], [0, 0], 0, tilt),
+            place([q.lx, q.ly, 0.03], [0, 0], 0, tilt),
+            place([q.rx, q.ry, 0.03], [0, 0], 0, tilt),
+            place([p.rx, p.ry, 0.03], [0, 0], 0, tilt)],
+        c: COL.soilWork, k: 1.0, cull: false
+      });
+    }
+  }
+
+  function buildTracks(out, s, upTo, tilt, track) {
+    var step = Math.max(1, Math.floor(upTo / 90));
+    for (var i = Math.max(0, upTo - 900); i < upTo - step; i += step) {
+      if (s.x[i] === null) { continue; }
+      [1, -1].forEach(function (side) {
+        var th = s.theta[i], th2 = s.theta[i + step];
+        var nx = -Math.sin(th) * side * track / 2, ny = Math.cos(th) * side * track / 2;
+        var mx = -Math.sin(th2) * side * track / 2, my = Math.cos(th2) * side * track / 2;
+        out.push({
+          p: [place([s.x[i] + nx, s.y[i] + ny, 0.035], [0, 0], 0, tilt),
+              place([s.x[i + step] + mx, s.y[i + step] + my, 0.035], [0, 0], 0, tilt)],
+          line: true, stroke: "rgba(92,74,51,0.5)", width: 3
+        });
+      });
+    }
+  }
+
+  /* ---------------- public interface ---------------- */
 
   window.GuidanceScene = {
     create: function (canvas) { return new Scene(canvas); },
@@ -296,6 +450,7 @@
       var s = data.series, g = data.scene.machine;
       var tilt = (data.scene.slope_deg || 0) * Math.PI / 180 * (data.scene.slope_sign || 1);
       var faces = [];
+      var im = g.implement;
 
       var pose = {
         x: s.x[frame], y: s.y[frame], theta: s.theta[frame],
@@ -303,17 +458,25 @@
         thetaImplement: s.theta_implement ? s.theta_implement[frame] : s.theta[frame]
       };
 
-      buildGround(faces, pose.x, tilt);
-      if (g.implement) {
-        s.geomA = g.implement.hitch_distance.value;
-        s.geomB = g.implement.implement_wheelbase.value;
-        buildSwath(faces, s, frame, tilt, g.implement.working_width.value / 2);
+      buildGround(faces, pose.x, tilt, im ? im.working_width.value : 0);
+      if (im) {
+        buildSwath(faces, s, frame, tilt, im.hitch_distance.value,
+          im.implement_wheelbase.value, im.working_width.value / 2);
       }
-      buildMachine(faces, g, pose, tilt);
+      buildTracks(faces, s, frame, tilt, g.track_width.value);
+      buildTractor(faces, g, pose, tilt);
 
-      var target = place([pose.x, pose.y, 1.2], [0, 0], 0, tilt);
-      if (scene.mode === "top") { scene.pitch = 1.45; }
-      if (scene.mode === "side") { scene.pitch = 0.12; }
+      if (im) {
+        var a = im.hitch_distance.value, b = im.implement_wheelbase.value;
+        var hx = pose.x - a * Math.cos(pose.theta), hy = pose.y - a * Math.sin(pose.theta);
+        var ix = hx - b * Math.cos(pose.thetaImplement);
+        var iy = hy - b * Math.sin(pose.thetaImplement);
+        buildImplement(faces, im, hx, hy, ix, iy, pose.theta, pose.thetaImplement, tilt);
+      }
+
+      var back = im ? (im.hitch_distance.value + im.implement_wheelbase.value) * 0.5 : 0;
+      var target = place([pose.x - back * Math.cos(pose.theta),
+                          pose.y - back * Math.sin(pose.theta), 1.4], [0, 0], 0, tilt);
       scene.draw(faces, target);
       return pose;
     }

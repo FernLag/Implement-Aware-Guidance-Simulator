@@ -142,3 +142,60 @@ def test_canvas_has_a_text_alternative_that_updates():
     assert 'id="scene"' in templates and 'role="img"' in templates
     app = (REPO / "web" / "static" / "js" / "app.js").read_text()
     assert 'setAttribute("aria-label"' in app
+
+
+# --- regression guards for the camera and clipping defects -----------------
+
+def _scene_source() -> str:
+    return (REPO / "web" / "static" / "js" / "scene3d.js").read_text()
+
+
+def test_camera_builds_an_orthonormal_basis_rather_than_rotating_by_hand():
+    """The first version rotated points by yaw then pitch directly, which made
+    the top view nearly horizontal. A forward, right and up basis fixes it."""
+    src = _scene_source()
+    assert "Scene.prototype.basis" in src
+    assert "cross(f, [0, 0, 1])" in src
+    assert "cross(r, f)" in src
+
+
+def test_pitch_is_clamped_below_a_right_angle():
+    """At exactly 90 degrees the right vector degenerates."""
+    src = _scene_source()
+    assert "Math.min(1.48" in src
+
+
+def test_near_plane_clips_polygons_instead_of_dropping_faces():
+    """Dropping a whole face let survivors project at a thousand pixels per
+    metre, which is what filled the screen with a dark tyre."""
+    src = _scene_source()
+    assert "function clipNear" in src
+    assert "var NEAR" in src
+
+
+def test_backface_culling_is_applied():
+    src = _scene_source()
+    assert "Backface culling" in src
+
+
+def test_three_camera_presets_are_defined():
+    src = _scene_source()
+    assert "applyPreset" in src
+    for mode in ("chase", "side", "top"):
+        assert '"' + mode + '"' in src
+
+    app = (REPO / "web" / "static" / "js" / "app.js").read_text()
+    assert "scene.applyPreset(btn.getAttribute(\"data-view\"))" in app
+
+
+def test_implement_draft_class_reaches_the_renderer():
+    """Tools drawn along the bar depend on it."""
+    from aggsim.catalog import load_catalog
+    from aggsim.model import implement_from_catalog
+
+    catalog = load_catalog()
+    imp = catalog.implement("jd_1775nt_16row30")
+    machine = machine_geometry(catalog.tractor("jd_6145r"), imp,
+                               implement_from_catalog(imp))
+    assert "draft_class" in machine["implement"]
+    assert machine["implement"]["draft_class"]
