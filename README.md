@@ -22,7 +22,7 @@ all published path-tracking work optimises tractor error.
 git clone https://github.com/FernLag/Implement-Aware-Guidance-Simulator.git
 cd Implement-Aware-Guidance-Simulator
 python3 -m pip install -r requirements.txt
-python3 -m pytest tests/ -q          # 143 tests, ~75 s
+python3 -m pytest tests/ -q          # 159 tests, ~85 s
 ```
 
 Requires Python 3.11+. Dependencies are NumPy, Matplotlib, PyYAML and pytest —
@@ -96,6 +96,17 @@ Both controllers scored against both objectives. Look for panel (d): every
 point sits below parity, meaning tuning that improves the tractor metric
 delivers proportionally less to the implement.
 
+### 7. The dual-objective tuning comparison  *(~8 min)*
+
+```bash
+python3 scripts/stage6_dual_objective.py
+```
+
+The central experiment: 24 configurations, each scanned over 32 lookahead
+gains against three objectives. Writes `results/stage6_results.json` alongside
+the figure. Look for panel (b) — the divergence is negative everywhere, which
+is the opposite sign to the hypothesis the project started from.
+
 **Shortest meaningful demo:** run step 1, then step 5.
 
 ---
@@ -114,6 +125,23 @@ The difference between the two metrics is **0.3725 m for every controller and
 every gain tested** — a controller-independent constant set by the crab angle
 acting on the implement's longitudinal offset.
 
+**Stage 6, the central experiment.** Across 24 configurations, the two optimal
+lookahead gains diverge in every one, by more than one grid step in every one:
+
+| | k_tractor | k_implement | gap |
+|---|---|---|---|
+| mean over 24 configurations | — | — | **−0.087 s** |
+| range | 0.27–0.46 | 0.30–0.40 | −0.140 to −0.051 |
+
+So the hypothesis holds — but **the sign is the opposite of the one the
+project assumed**. The implement wants a *shorter* lookahead than the tractor,
+not a longer one. The brief expected aggressive tuning to whip a trailed
+implement; instead, over most of the configuration space, the implement
+benefits from the tighter tuning and it is *relaxing* toward the tractor
+optimum that costs it. The whipping regime does exist, but only at the
+extreme: a 21.2 m cultivator recovering from a 5 m offset flips the gap
+positive (+0.035).
+
 Three results that were not expected going in, each documented where it lives:
 
 - **Stanley does not eliminate the steady-state offset.** Raising `k_e` drives
@@ -125,8 +153,13 @@ Three results that were not expected going in, each documented where it lives:
   equilibrium, so side slope drives the metrics apart through the crab angle
   rather than through hitch articulation.
 - **A longer lookahead helps stability but hurts slope tracking.** Stage 2
-  wants large `k`; Stage 3's `e_ss ∝ L_d` wants small. That tension is what
-  Stage 6 has to resolve.
+  wants large `k`; Stage 3's `e_ss ∝ L_d` wants small.
+- **Skip and overlap do not follow either control objective.** A uniform
+  lateral offset creates no skip at all — it shifts the whole field pattern
+  without opening a gap. Skip is driven by implement *yaw*, so it falls
+  monotonically with lookahead and wants the longest one searched, pulling
+  against both control optima. Tuning for implement edge error actually makes
+  skip *worse* (8.6 cm vs 7.2 cm on a 3 m drill).
 
 ---
 
@@ -182,9 +215,12 @@ aggsim/
     steering.py   actuator lag and slew limit (Stage 2)
     terrain.py    side slope and slip (Stage 3)
   sim/run.py      fixed-step loop
-  analysis/       oscillation detection
+  analysis/
+    oscillation.py  settling and damping detection (Stage 2)
+    coverage.py     skip and overlap between passes (Stage 6)
+    tuning.py       dual-objective gain search (Stage 6)
 scripts/          one demo script per stage
-tests/            143 tests
+tests/            159 tests
 ```
 
 ### Conventions
@@ -211,15 +247,21 @@ tests/            143 tests
 | 3 · Terrain effects | done |
 | 4 · Implement model, second metric | done |
 | 5 · Stanley comparison | done |
-| 6 · Dual-objective tuning | not started |
+| 6 · Dual-objective tuning | done — 24 configurations |
 | 7 · ROS 2 / Gazebo validation | conditional on 0–6 |
 
-Preliminary signal for Stage 6, on flat ground with actuator lag and a 3 m
-acquisition transient: the two optimal lookahead gains do separate
-(`k_tractor` = 0.50 vs `k_implement` = 0.40–0.45), but by only one to two
-steps of a 0.05 grid. Stage 6 needs to resolve that properly before it counts
-as a finding. If the optima turn out to coincide across the configuration
-space, that is a negative result and gets reported as one.
+Stage 6 is complete and the divergence is real, but two caveats bound it.
+**The practical cost is small:** tuning for the tractor costs on average 0.81%
+extra RMS edge error, at most 1.51%. The optima are statistically distinct and
+agronomically marginal at these settings. **And the scenario is load-bearing:**
+below roughly a 2 m acquisition offset both objectives fall monotonically to
+the shortest lookahead searched, so neither has an interior optimum and the
+comparison is vacuous. `TuningResult.interior` flags that case rather than
+letting it read as agreement.
+
+Stage 7 (ROS 2 / Gazebo) remains conditional. Per the brief, it should not
+begin until Stages 1–6 are validated, and should be abandoned in favour of
+shipping Stages 0–6 if the environment takes more than about two weeks.
 
 ---
 
@@ -236,6 +278,9 @@ just against previous output:
 - constant steering traces a circle of radius `L/tan δ` (1e-6 m over 2000 steps)
 - RK4's radius error is >100× smaller than Euler's at the same step
 - the steady-state slope offset matches its closed form to 2.7e-13 m
+- Stanley's front-axle offset matches its closed form, and its rear-axle
+  floor `L·v_d/√(v²+v_d²)` is approached but never crossed
+- parabolic sub-grid refinement recovers a known parabola vertex exactly
 - a known damping ratio ζ = 0.10 is recovered from a synthetic decay within 5%
 
 Three tests are called for by name in the project brief:

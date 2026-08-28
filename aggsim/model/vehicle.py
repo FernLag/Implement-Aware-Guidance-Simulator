@@ -14,6 +14,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .implement import hitch_angle_derivative
+
 
 @dataclass(frozen=True)
 class VehicleParams:
@@ -157,8 +159,6 @@ def plant_derivative(
     `geometry is None` means no implement; theta_i then simply tracks the
     tractor heading so the state stays well defined.
     """
-    from .implement import hitch_angle_derivative
-
     theta, delta, theta_i = vec[2], vec[3], vec[4]
     v_eff, drift = _terrain_terms(v, terrain)
     theta_dot = (v_eff / wheelbase) * np.tan(delta)
