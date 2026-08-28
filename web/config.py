@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import os
 import secrets
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 
 
 def _flag(name: str, default: bool = False) -> bool:
@@ -49,11 +51,22 @@ class Settings:
     site_origin: str
     debug: bool
 
+    # Where contact messages go. Probed for writability at start up, because
+    # a serverless or read-only filesystem would otherwise fail at the moment
+    # someone presses send, after they had already typed the message.
+    message_store: Path | None
+    message_store_writable: bool
+
     # Limits. Every one of these bounds an attacker controlled quantity.
     rate_limit_per_minute: int
     rate_limit_burst: int
     max_content_length: int
     max_simulation_steps: int
+
+    @property
+    def accepts_messages(self) -> bool:
+        """False when there is nowhere durable to put a message."""
+        return self.message_store_writable
 
     @property
     def contact_configured(self) -> bool:
@@ -65,7 +78,31 @@ class Settings:
         return self.analytics_enabled
 
 
+def _resolve_message_store() -> tuple[Path | None, bool]:
+    """Pick a writable location for contact messages, or report that there is none.
+
+    Order: an explicitly configured path, then the local instance directory.
+    A temporary directory is deliberately NOT used as a silent fallback: on an
+    ephemeral platform that would accept messages and then lose them, which is
+    worse than declining to accept them at all.
+    """
+    configured = os.environ.get("AGGSIM_MESSAGE_STORE")
+    candidates = [Path(configured)] if configured else [Path("instance") / "messages.jsonl"]
+
+    for path in candidates:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8"):
+                pass
+            return path, True
+        except OSError:
+            continue
+    return (Path(configured) if configured else None), False
+
+
 def load_settings() -> Settings:
+    store, writable = _resolve_message_store()
+
     key = os.environ.get("AGGSIM_SECRET_KEY")
     ephemeral = not key
     if ephemeral:
@@ -88,4 +125,6 @@ def load_settings() -> Settings:
         rate_limit_burst=_int("AGGSIM_RATE_LIMIT_BURST", 40, 1, 500),
         max_content_length=_int("AGGSIM_MAX_CONTENT_LENGTH", 16 * 1024, 1024, 1024 * 1024),
         max_simulation_steps=_int("AGGSIM_MAX_SIMULATION_STEPS", 40_000, 1000, 400_000),
+        message_store=store,
+        message_store_writable=writable,
     )

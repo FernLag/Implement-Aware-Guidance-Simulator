@@ -171,12 +171,23 @@ def create_app(settings: Settings | None = None) -> Flask:
             # Honeypot filled. Accept silently so the bot learns nothing.
             return redirect(url_for("thank_you"))
 
+        if not settings.accepts_messages:
+            # Said before the work, not after: the form is disabled in the
+            # template too, so this is the belt to that pair of braces.
+            return render_template(
+                "contact.html",
+                errors={"_form": "This deployment has nowhere to store messages, "
+                                 "so the form cannot accept them. Nothing was sent."},
+                values={k: form.get(k, "") for k in ("name", "email", "message")},
+                **_ctx("contact"),
+            ), 503
+
         record = {
             "at": datetime.now(timezone.utc).isoformat(),
             "name": payload.name, "email": payload.email, "message": payload.message,
         }
         try:
-            path = Path(app.instance_path) / "messages.jsonl"
+            path = Path(app.config.get("MESSAGE_STORE") or settings.message_store)
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(record) + "\n")

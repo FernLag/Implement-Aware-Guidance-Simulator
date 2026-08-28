@@ -6,6 +6,15 @@
     <p class="lede">Questions about the model, the equipment catalog or the
     results are welcome.</p>
 
+    {% if not settings.accepts_messages %}
+    <div class="form-error" role="note">
+      This deployment has no writable place to store messages, which usually
+      means it runs on a platform with a read-only or temporary filesystem. The
+      form below is disabled rather than accepting a message that would be lost.
+      The operator sets AGGSIM_MESSAGE_STORE to a durable path to enable it.
+    </div>
+    {% endif %}
+
     {% if not settings.contact_configured %}
     <div class="form-error" role="note" style="border-left-color:var(--soil-400);color:var(--soil-600)">
       This deployment has no contact address configured. Messages sent from this
@@ -58,7 +67,10 @@
       are stored on the server so the operator can reply. See the
       <a href="{{ url_for('privacy') }}">privacy page</a>.</p>
 
-      <button type="submit" class="btn btn-primary">Send message</button>
+      <button type="submit" class="btn btn-primary"
+              {% if not settings.accepts_messages %}disabled aria-disabled="true"{% endif %}>
+        Send message
+      </button>
     </form>
   </div>
 </section>

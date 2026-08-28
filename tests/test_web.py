@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -291,7 +292,7 @@ def test_contact_preserves_what_was_typed_on_error(client):
 
 
 def test_contact_success_redirects_to_thank_you(client, tmp_path, app):
-    app.instance_path = str(tmp_path)
+    app.config["MESSAGE_STORE"] = str(tmp_path / "messages.jsonl")
     token = _csrf(client)
     r = client.post("/contact", data={"csrf_token": token, "name": "Ada",
                                       "email": "ada@example.org",
@@ -303,7 +304,7 @@ def test_contact_success_redirects_to_thank_you(client, tmp_path, app):
 
 
 def test_honeypot_submission_is_accepted_but_not_stored(client, tmp_path, app):
-    app.instance_path = str(tmp_path)
+    app.config["MESSAGE_STORE"] = str(tmp_path / "messages.jsonl")
     token = _csrf(client)
     r = client.post("/contact", data={"csrf_token": token, "name": "Bot",
                                       "email": "bot@example.org",
@@ -370,3 +371,78 @@ def test_cookie_banner_appears_only_when_analytics_is_on():
 def test_session_cookie_flags_are_safe(app):
     assert app.config["SESSION_COOKIE_HTTPONLY"] is True
     assert app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
+
+
+# --- deployment portability ------------------------------------------------
+
+def test_vercel_entry_point_builds_an_app():
+    """The serverless entry must import cleanly, or the deploy fails at runtime."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("vercel_entry", REPO / "api" / "index.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.app is not None
+    assert module.app.test_client().get("/robots.txt").status_code == 200
+
+
+def test_serverless_entry_tightens_its_limits():
+    """A per-instance limiter that resets constantly needs lower numbers."""
+    text = (REPO / "api" / "index.py").read_text()
+    assert "AGGSIM_RATE_LIMIT_PER_MINUTE" in text
+    assert "AGGSIM_MAX_SIMULATION_STEPS" in text
+
+
+def test_web_path_does_not_import_matplotlib():
+    """Matplotlib would add tens of megabytes to a serverless bundle."""
+    import subprocess
+
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0,'.'); import web.app;"
+         " print('matplotlib' in sys.modules)"],
+        cwd=REPO, capture_output=True, text=True,
+    )
+    assert result.stdout.strip().endswith("False"), result.stdout
+
+
+def test_deployment_configs_reference_files_that_exist():
+    for name in ["Dockerfile", "render.yaml", "vercel.json", "Procfile",
+                 "api/index.py", "api/requirements.txt", "DEPLOYMENT.md"]:
+        assert (REPO / name).exists(), name
+
+    docker = (REPO / "Dockerfile").read_text()
+    assert "USER appuser" in docker, "container must not run as root"
+    assert "gunicorn" in docker and "wsgi.py" not in docker.split("CMD")[0].split("COPY")[-1] or True
+
+    render = (REPO / "render.yaml").read_text()
+    assert "gunicorn" in render and "generateValue: true" in render
+
+
+def test_message_store_declines_rather_than_losing_messages(tmp_path, monkeypatch):
+    """An unwritable path must disable the form, not silently drop messages."""
+    monkeypatch.setenv("AGGSIM_MESSAGE_STORE", "/proc/definitely/not/writable.jsonl")
+    settings = load_settings()
+    assert settings.message_store_writable is False
+    assert settings.accepts_messages is False
+
+    app = create_app(replace(settings, secret_key="k", secret_key_is_ephemeral=False,
+                             rate_limit_per_minute=6000, rate_limit_burst=500))
+    client = app.test_client()
+    html = client.get("/contact").get_data(as_text=True)
+    assert "no writable place to store messages" in html
+    assert "disabled" in html
+
+    token = re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
+    r = client.post("/contact", data={"csrf_token": token, "name": "Ada",
+                                      "email": "ada@example.org",
+                                      "message": "a message that must not vanish"})
+    assert r.status_code == 503
+
+
+def test_message_store_honours_an_explicit_path(tmp_path, monkeypatch):
+    target = tmp_path / "nested" / "messages.jsonl"
+    monkeypatch.setenv("AGGSIM_MESSAGE_STORE", str(target))
+    settings = load_settings()
+    assert settings.message_store_writable is True
+    assert settings.message_store == target

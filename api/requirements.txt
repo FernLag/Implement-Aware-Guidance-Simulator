@@ -1,0 +1,8 @@
+# Vercel installs this for the Python function in api/.
+# Matplotlib is deliberately absent: the web path never imports it, and it
+# would add tens of megabytes to a bundle that has a size limit.
+Flask>=3.0,<4
+Jinja2>=3.1,<4
+pydantic>=2.5,<3
+numpy>=1.26
+PyYAML>=6.0

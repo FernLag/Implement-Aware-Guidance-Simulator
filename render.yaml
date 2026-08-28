@@ -1,0 +1,33 @@
+# Render blueprint. Free tier, no card required.
+#
+# This is the closest match to how the application is written: a long lived
+# gunicorn process, so the in-memory rate limiter and signed sessions behave
+# as designed rather than resetting on every request.
+#
+# Free tier trade-offs, stated plainly:
+#   - the service sleeps after 15 minutes idle, and the next request waits
+#     roughly 30 to 60 seconds for it to wake
+#   - the disk is ephemeral, so contact messages do not survive a redeploy
+#   - 750 instance hours per workspace per month
+
+services:
+  - type: web
+    name: guidance-simulator
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt -r requirements-web.txt
+    startCommand: gunicorn -w 2 -t 60 -b 0.0.0.0:$PORT wsgi:app
+    healthCheckPath: /robots.txt
+    envVars:
+      - key: AGGSIM_SECRET_KEY
+        generateValue: true
+      - key: AGGSIM_SITE_ORIGIN
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      # Two workers each hold their own token bucket, so the effective limit
+      # is twice this figure. Halved here so the total lands where intended.
+      - key: AGGSIM_RATE_LIMIT_PER_MINUTE
+        value: "60"
+      - key: AGGSIM_RATE_LIMIT_BURST
+        value: "20"

@@ -1,0 +1,16 @@
+.git
+.github
+results
+tests
+scripts
+docs
+*.png
+*.jsonl
+.env
+.env.*
+instance
+__pycache__
+**/__pycache__
+.pytest_cache
+venv
+.venv
