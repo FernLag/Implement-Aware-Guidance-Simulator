@@ -24,6 +24,13 @@ from .param import Param
 
 ImplementType = Literal["mounted", "trailed"]
 
+# How the machine changes direction. The Stage 1 kinematic bicycle model
+# represents front-wheel steering only: an articulated machine pivots about a
+# frame joint between two bodies, which is a different model entirely (and one
+# whose yaw response depends on the mass split, not on a steer angle).
+# Catalogue them, but refuse to simulate them until that model exists.
+SteeringType = Literal["wheel_steer", "articulated"]
+
 
 @dataclass(frozen=True)
 class Tractor:
@@ -38,6 +45,14 @@ class Tractor:
     max_steer_angle: Param
     tire_front: str | None = None
     tire_rear: str | None = None
+    steering_type: SteeringType = "wheel_steer"
+    notes: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.steering_type not in ("wheel_steer", "articulated"):
+            raise ValueError(
+                f"{self.id}: unknown steering_type {self.steering_type!r}"
+            )
 
     @property
     def name(self) -> str:
@@ -69,6 +84,7 @@ class Implement:
     draft_class: str | None = None
     working_depth: Param | None = None
     draft_power_per_width: Param | None = None
+    notes: str | None = None
 
     def __post_init__(self) -> None:
         if self.type == "trailed":

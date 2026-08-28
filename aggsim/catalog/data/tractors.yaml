@@ -4,6 +4,11 @@
 # Wheelbases are converted from the inch figure (higher printed precision);
 # the `note` records the figure as printed so the conversion stays checkable.
 #
+# steering_type distinguishes front-wheel steering from frame articulation.
+# Articulated machines are catalogued for reference but from_tractor() refuses
+# them: the Stage 1 bicycle model steers by a wheel angle and cannot represent
+# a pivot joint between two bodies.
+#
 # max_steer_angle is assumed for every entry: TractorData does not publish
 # steering geometry, and manufacturers rarely do.
 #
@@ -258,3 +263,429 @@ tractors:
       rationale: >-
         Steering geometry is not published. 45 deg is the midpoint of the
         40-55 deg range typical of MFWD row-crop tractors.
+
+  - id: monarch_mk_v
+    manufacturer: Monarch
+    model: MK-V
+    years: "2023-"
+    notes: >-
+      Driver-optional battery-electric tractor. Peak 70 hp / rated 40 hp; the diesel-derived drawbar ratio used for the assumed drawbar figure is questionable for an electric drivetrain, where rated (continuous) power is the better basis for sustained draft.
+    tire_front: "200/70R16"
+    tire_rear: "11.2-24"
+    wheelbase:
+      value: 2.16
+      unit: m
+      source: https://www.monarchtractor.com/hubfs/01_MK-V%20Documents/Monarch_MKV_SpecSheet_v.2024.11.pdf
+      note: "85.0 in / 2,160 mm as printed"
+    mass:
+      value: 2610
+      unit: kg
+      assumed: true
+      rationale: >-
+        The MK-V specification sheet lists a "Base Weight" row but the
+        value could not be extracted from the PDF's column layout. Secondary
+        sources report 5,750 lb (2,610 kg); that figure is recorded here as
+        an assumption, not as sourced. Mass is unused by Stages 1-6.
+    engine_power:
+      value: 52199
+      unit: W
+      source: https://www.monarchtractor.com/hubfs/01_MK-V%20Documents/Monarch_MKV_SpecSheet_v.2024.11.pdf
+      note: "peak motor power 70 hp (52 kW) as printed; rated 40 hp (30 kW)"
+    drawbar_power:
+      value: 39462
+      unit: W
+      assumed: true
+      rationale: >-
+        No Nebraska drawbar test published for this model. Taken as 0.756 x
+        gross engine power, the mean drawbar/gross ratio of the four
+        Nebraska-tested tractors in this catalog.
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published by any manufacturer in this
+        catalog. 45 deg is the midpoint of the 40-55 deg range typical of
+        MFWD tractors. Affects only saturation.
+
+  - id: mahindra_6075
+    manufacturer: Mahindra
+    model: 6075
+    years: "2018-"
+    tire_front: "11.2-24"
+    tire_rear: "16.9-30"
+    wheelbase:
+      value: 2.22
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/010/0/3/10030-mahindra-6075.html
+      note: "87.4 in / 221 cm as printed"
+    mass:
+      value: 3060
+      unit: kg
+      source: https://www.tractordata.com/farm-tractors/010/0/3/10030-mahindra-6075.html
+      note: "6746 lb / 3060 kg, lower end of the printed 6746-7495 lb range"
+    engine_power:
+      value: 52945
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/010/0/3/10030-mahindra-6075.html
+      note: "71 hp gross / 52.9 kW as printed"
+    drawbar_power:
+      value: 40029
+      unit: W
+      assumed: true
+      rationale: >-
+        No Nebraska drawbar test published for this model. Taken as 0.756 x
+        gross engine power, the mean drawbar/gross ratio of the four
+        Nebraska-tested tractors in this catalog.
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published by any manufacturer in this
+        catalog. 45 deg is the midpoint of the 40-55 deg range typical of
+        MFWD tractors. Affects only saturation.
+
+  - id: kubota_m5_091
+    manufacturer: Kubota
+    model: M5-091
+    years: "2015-"
+    tire_front: "7.5-18"
+    tire_rear: "18.4-28"
+    wheelbase:
+      value: 2.25
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/008/5/1/8511-kubota-m5-091.html
+      note: "88.6 in (4WD) as printed"
+    mass:
+      value: 2550
+      unit: kg
+      source: https://www.tractordata.com/farm-tractors/008/5/1/8511-kubota-m5-091.html
+      note: "5622 lb / 2550 kg, lower end of the printed 5622-6900 lb range"
+    engine_power:
+      value: 68977
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/008/5/1/8511-kubota-m5-091.html
+      note: "92.5 hp gross / 69.0 kW as printed"
+    drawbar_power:
+      value: 52146
+      unit: W
+      assumed: true
+      rationale: >-
+        No Nebraska drawbar test published for this model. Taken as 0.756 x
+        gross engine power, the mean drawbar/gross ratio of the four
+        Nebraska-tested tractors in this catalog.
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published by any manufacturer in this
+        catalog. 45 deg is the midpoint of the 40-55 deg range typical of
+        MFWD tractors. Affects only saturation.
+
+  - id: nh_t5_120
+    manufacturer: New Holland
+    model: T5.120
+    years: "2017-"
+    tire_front: "14.9R24"
+    tire_rear: "18.4R34"
+    wheelbase:
+      value: 2.283
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/011/4/0/11404-new-holland-t5120.html
+      note: "89.9 in / 228 cm as printed"
+    mass:
+      value: 3480
+      unit: kg
+      source: https://www.tractordata.com/farm-tractors/011/4/0/11404-new-holland-t5120.html
+      note: "7672 lb / 3480 kg, lower end of the printed 7672-8157 lb range"
+    engine_power:
+      value: 89484
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/011/4/0/11404-new-holland-t5120.html
+      note: "120 hp gross / 89.5 kW as printed"
+    drawbar_power:
+      value: 67650
+      unit: W
+      assumed: true
+      rationale: >-
+        No Nebraska drawbar test published for this model. Taken as 0.756 x
+        gross engine power, the mean drawbar/gross ratio of the four
+        Nebraska-tested tractors in this catalog.
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published by any manufacturer in this
+        catalog. 45 deg is the midpoint of the 40-55 deg range typical of
+        MFWD tractors. Affects only saturation.
+
+  - id: valtra_n155
+    manufacturer: Valtra
+    model: N155
+    years: "2021-"
+    tire_front: "480/65R28"
+    tire_rear: "600/65R38"
+    wheelbase:
+      value: 2.665
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/010/9/8/10987-valtra-n155.html
+      note: "104.9 in / 266 cm as printed"
+    mass:
+      value: 6500
+      unit: kg
+      source: https://www.tractordata.com/farm-tractors/010/9/8/10987-valtra-n155.html
+      note: "14330 lb / 6500 kg as printed"
+    engine_power:
+      value: 114017
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/010/9/8/10987-valtra-n155.html
+      note: "152.9 hp gross / 114.0 kW as printed"
+    drawbar_power:
+      value: 86196
+      unit: W
+      assumed: true
+      rationale: >-
+        No Nebraska drawbar test published for this model. Taken as 0.756 x
+        gross engine power, the mean drawbar/gross ratio of the four
+        Nebraska-tested tractors in this catalog.
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published by any manufacturer in this
+        catalog. 45 deg is the midpoint of the 40-55 deg range typical of
+        MFWD tractors. Affects only saturation.
+
+  - id: deutz_fahr_6190_ttv
+    manufacturer: Deutz-Fahr
+    model: 6190 TTV
+    years: "2012-"
+    tire_front: "16.9R30"
+    tire_rear: "650/65R42"
+    wheelbase:
+      value: 2.769
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/008/9/3/8936-deutz-fahr-6190-ttv.html
+      note: "109 in / 276 cm as printed"
+    mass:
+      value: 7000
+      unit: kg
+      assumed: true
+      rationale: >-
+        TractorData does not list a weight for this model. 7000 kg is
+        typical of the 160-170 hp four-cylinder class represented elsewhere in
+        this catalog. Unused by Stages 1-6; replace before Stage 7.
+    engine_power:
+      value: 123041
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/008/9/3/8936-deutz-fahr-6190-ttv.html
+      note: "165 hp gross / 123.0 kW as printed"
+    drawbar_power:
+      value: 93019
+      unit: W
+      assumed: true
+      rationale: >-
+        No Nebraska drawbar test published for this model. Taken as 0.756 x
+        gross engine power, the mean drawbar/gross ratio of the four
+        Nebraska-tested tractors in this catalog.
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published by any manufacturer in this
+        catalog. 45 deg is the midpoint of the 40-55 deg range typical of
+        MFWD tractors. Affects only saturation.
+
+  - id: jd_7r_250
+    manufacturer: John Deere
+    model: 7R 250
+    years: "2019-"
+    tire_front: "420/85R34"
+    tire_rear: "480/80R50"
+    wheelbase:
+      value: 2.926
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/010/6/2/10628-john-deere-7r-250.html
+      note: "115.2 in / 292 cm as printed"
+    mass:
+      value: 11000
+      unit: kg
+      assumed: true
+      rationale: >-
+        TractorData does not list a weight for this model. 11000 kg is
+        between the 6145R (7723 kg) and 8R 410 (12610 kg) entries in this
+        catalog. Unused by Stages 1-6; replace before Stage 7.
+    engine_power:
+      value: 186425
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/010/6/2/10628-john-deere-7r-250.html
+      note: "250 hp gross / 186.4 kW as printed"
+    drawbar_power:
+      value: 142559
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/010/6/2/10628-john-deere-7r-250.html
+      note: "191.17 hp / 142.6 kW drawbar (tested) as printed"
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published by any manufacturer in this
+        catalog. 45 deg is the midpoint of the 40-55 deg range typical of
+        MFWD tractors. Affects only saturation.
+
+  - id: claas_axion_850
+    manufacturer: CLAAS
+    model: Axion 850
+    years: "2006-2023"
+    wheelbase:
+      value: 2.979
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/010/0/4/10046-claas-axion-850.html
+      note: "117.3 in / 297 cm as printed"
+    mass:
+      value: 8700
+      unit: kg
+      source: https://www.tractordata.com/farm-tractors/010/0/4/10046-claas-axion-850.html
+      note: "19180 lb / 8700 kg as printed"
+    engine_power:
+      value: 188662
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/010/0/4/10046-claas-axion-850.html
+      note: "253 hp gross as printed"
+    drawbar_power:
+      value: 142629
+      unit: W
+      assumed: true
+      rationale: >-
+        No Nebraska drawbar test published for this model. Taken as 0.756 x
+        gross engine power, the mean drawbar/gross ratio of the four
+        Nebraska-tested tractors in this catalog.
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published by any manufacturer in this
+        catalog. 45 deg is the midpoint of the 40-55 deg range typical of
+        MFWD tractors. Affects only saturation.
+
+  - id: mf_8s_265
+    manufacturer: Massey Ferguson
+    model: 8S.265
+    years: "2020-"
+    tire_front: "540/65R30"
+    tire_rear: "650/65R42"
+    wheelbase:
+      value: 3.051
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/010/7/3/10732-massey-ferguson-8s265.html
+      note: "120.1 in / 305 cm as printed"
+    mass:
+      value: 8700
+      unit: kg
+      source: https://www.tractordata.com/farm-tractors/010/7/3/10732-massey-ferguson-8s265.html
+      note: "19180 lb / 8700 kg, lower end of the printed 19180-22046 lb range"
+    engine_power:
+      value: 194999
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/010/7/3/10732-massey-ferguson-8s265.html
+      note: "261.5 hp gross / 195.0 kW as printed"
+    drawbar_power:
+      value: 147417
+      unit: W
+      assumed: true
+      rationale: >-
+        No Nebraska drawbar test published for this model. Taken as 0.756 x
+        gross engine power, the mean drawbar/gross ratio of the four
+        Nebraska-tested tractors in this catalog.
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published by any manufacturer in this
+        catalog. 45 deg is the midpoint of the 40-55 deg range typical of
+        MFWD tractors. Affects only saturation.
+
+  - id: caseih_steiger_500_quadtrac
+    manufacturer: Case IH
+    model: Steiger 500 Quadtrac
+    years: "2011-2023"
+    steering_type: articulated
+    notes: >-
+      Articulated crawler. Steers by frame articulation on four rubber tracks, which the Stage 1 bicycle model does not represent; from_tractor() refuses it.
+    wheelbase:
+      value: 3.912
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/006/7/3/6733-caseih-steiger-500-quadtrac.html
+      note: "154 in / 391 cm as printed"
+    mass:
+      value: 24291
+      unit: kg
+      source: https://www.tractordata.com/farm-tractors/006/7/3/6733-caseih-steiger-500-quadtrac.html
+      note: "53554 lb / 24291 kg, lower end of the printed 53554-54290 lb range"
+    engine_power:
+      value: 372850
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/006/7/3/6733-caseih-steiger-500-quadtrac.html
+      note: "500 hp gross / 372.9 kW as printed"
+    drawbar_power:
+      value: 286881
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/006/7/3/6733-caseih-steiger-500-quadtrac.html
+      note: "384.77 hp / 286.9 kW drawbar (tested) as printed"
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published by any manufacturer in this
+        catalog. 45 deg is the midpoint of the 40-55 deg range typical of
+        MFWD tractors. Affects only saturation.
+
+  - id: jd_9r_540
+    manufacturer: John Deere
+    model: 9R 540
+    years: "2021-"
+    steering_type: articulated
+    notes: >-
+      Articulated four-wheel-drive. Steers by frame articulation, which the Stage 1 bicycle model does not represent; from_tractor() refuses it.
+    tire_front: "800/70R38"
+    tire_rear: "800/70R38"
+    wheelbase:
+      value: 3.912
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/011/3/1/11310-john-deere-9r-540.html
+      note: "154 in as printed"
+    mass:
+      value: 20856
+      unit: kg
+      source: https://www.tractordata.com/farm-tractors/011/3/1/11310-john-deere-9r-540.html
+      note: "45980 lb / 20856 kg as printed"
+    engine_power:
+      value: 397010
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/011/3/1/11310-john-deere-9r-540.html
+      note: "532.4 hp gross as printed; PTO 335 hp claimed"
+    drawbar_power:
+      value: 300137
+      unit: W
+      assumed: true
+      rationale: >-
+        No Nebraska drawbar test published for this model. Taken as 0.756 x
+        gross engine power, the mean drawbar/gross ratio of the four
+        Nebraska-tested tractors in this catalog.
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published by any manufacturer in this
+        catalog. 45 deg is the midpoint of the 40-55 deg range typical of
+        MFWD tractors. Affects only saturation.

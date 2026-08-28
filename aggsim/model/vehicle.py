@@ -37,7 +37,20 @@ class VehicleParams:
 
 
 def from_tractor(tractor) -> VehicleParams:
-    """Build vehicle parameters from a Stage 0 catalog entry."""
+    """Build vehicle parameters from a Stage 0 catalog entry.
+
+    Refuses articulated machines. The bicycle model steers by a front-wheel
+    angle; an articulated tractor pivots about a frame joint between two
+    bodies and its yaw response depends on how mass is split across that
+    joint. Running one through this model would produce plausible numbers
+    that mean nothing, which is worse than an error.
+    """
+    if getattr(tractor, "steering_type", "wheel_steer") == "articulated":
+        raise ValueError(
+            f"{tractor.id} steers by frame articulation; the Stage 1 bicycle "
+            "model represents front-wheel steering only. Catalogued for "
+            "reference, not simulatable until an articulated model exists."
+        )
     return VehicleParams(
         wheelbase=tractor.wheelbase.value,
         max_steer_angle=tractor.max_steer_angle.value,

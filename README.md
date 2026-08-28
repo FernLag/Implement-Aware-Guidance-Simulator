@@ -22,7 +22,7 @@ all published path-tracking work optimises tractor error.
 git clone https://github.com/FernLag/Implement-Aware-Guidance-Simulator.git
 cd Implement-Aware-Guidance-Simulator
 python3 -m pip install -r requirements.txt
-python3 -m pytest tests/ -q          # 159 tests, ~85 s
+python3 -m pytest tests/ -q          # 167 tests, ~80 s
 ```
 
 Requires Python 3.11+. Dependencies are NumPy, Matplotlib, PyYAML and pytest —
@@ -42,9 +42,23 @@ numeric results, **including every assumed parameter used**, to stdout.
 python3 -m aggsim.catalog
 ```
 
-Lists 7 tractors (2.05–3.05 m wheelbase, 75–410 hp) and 9 implements
-(1.52–21.2 m working width), the feasible pairings, and all 41 assumed
+Lists **18 tractors** (2.05–3.91 m wheelbase, 70–532 hp) and **21 implements**
+(1.52–21.2 m working width), the feasible pairings, and all 101 assumed
 parameters with the reasoning behind each.
+
+| | manufacturers |
+|---|---|
+| Tractors | John Deere, Case IH, New Holland, Kubota, Fendt, Massey Ferguson, Valtra, CLAAS, Deutz-Fahr, Mahindra, Monarch |
+| Implements | John Deere, Case IH, KUHN Krause, Väderstad, HORSCH, AMAZONE, Great Plains, Land Pride, Carbon Robotics, Verdant Robotics |
+
+Includes newer autonomous and robotic machines: the **Monarch MK-V**
+driver-optional electric tractor, and the **Carbon Robotics LaserWeeder G2**
+and **Verdant Robotics Sharpshooter** as three-point mounted implements.
+
+Two entries carry a modelling caveat rather than a number. The **Case IH
+Steiger 500 Quadtrac** and **John Deere 9R 540** steer by frame articulation,
+which the Stage 1 bicycle model does not represent, so `from_tractor()`
+**refuses** them — an error beats plausible numbers from the wrong model.
 
 ### 2. Straight-line tracking  *(~5 s)*
 
@@ -181,7 +195,20 @@ at load. Provenance is structural, not a discipline someone has to remember.
 ```
 
 Sourced: tractor dimensions and power (TractorData, Nebraska tests), implement
-widths (manufacturer product pages), wheel slip by soil surface (PM 2089g).
+widths and masses (manufacturer product pages), wheel slip by soil surface
+(PM 2089g).
+
+The rule bites in practice. Three examples of figures that were **rejected**
+rather than used: a widely-quoted 9.4 t mass for the HORSCH Joker 8 RT traces
+back to a farming *simulation game* wiki, not the manufacturer; "weights" of
+148–193 lb for a 28-ft disk harrow turned out to be per-blade figures; and a
+22,100 lb Great Plains mass appeared only in a search summary that could not
+be checked against primary text. Each is recorded as an assumption with the
+reason, not quietly adopted.
+
+Not in the catalog, deliberately: **Yamaha** builds agricultural UAVs and
+invests in ag robotics but does not make tractors, so there is no entry to
+source.
 Assumed and swept: steering geometry, actuator time constant and slew rate,
 side-slope drift coefficient, implement drift ratio, hitch geometry.
 
@@ -220,7 +247,7 @@ aggsim/
     coverage.py     skip and overlap between passes (Stage 6)
     tuning.py       dual-objective gain search (Stage 6)
 scripts/          one demo script per stage
-tests/            159 tests
+tests/            167 tests
 ```
 
 ### Conventions
@@ -241,7 +268,7 @@ tests/            159 tests
 
 | Stage | State |
 |---|---|
-| 0 · Equipment catalog | done — 7 tractors, 9 implements |
+| 0 · Equipment catalog | done — 18 tractors, 21 implements |
 | 1 · Vehicle model, pure pursuit | done |
 | 2 · Steering actuator dynamics | done |
 | 3 · Terrain effects | done |

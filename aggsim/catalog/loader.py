@@ -38,6 +38,7 @@ def _param(record: dict, key: str, *, required: bool = True) -> Param | None:
 
 
 def _tractor(record: dict) -> Tractor:
+    _reject_unknown(record, _TRACTOR_KEYS, "tractor")
     return Tractor(
         id=record["id"],
         manufacturer=record["manufacturer"],
@@ -50,10 +51,40 @@ def _tractor(record: dict) -> Tractor:
         max_steer_angle=_param(record, "max_steer_angle"),
         tire_front=record.get("tire_front"),
         tire_rear=record.get("tire_rear"),
+        steering_type=record.get("steering_type", "wheel_steer"),
+        notes=record.get("notes"),
     )
 
 
+_IMPLEMENT_KEYS = {
+    "id", "manufacturer", "model", "type", "working_width", "mass",
+    "hitch_distance", "implement_wheelbase", "draft_class", "working_depth",
+    "draft_power_per_width", "notes",
+}
+_TRACTOR_KEYS = {
+    "id", "manufacturer", "model", "years", "wheelbase", "mass",
+    "engine_power", "drawbar_power", "max_steer_angle", "tire_front",
+    "tire_rear", "steering_type", "notes",
+}
+
+
+def _reject_unknown(record: dict, allowed: set[str], what: str) -> None:
+    """A key the loader does not understand is a silent data loss.
+
+    Catalog entries are hand-written, so a typo in a field name would
+    otherwise drop that parameter without a word -- including, in the worst
+    case, a provenance field.
+    """
+    unknown = set(record) - allowed
+    if unknown:
+        raise ValueError(
+            f"{record.get('id', '?')}: unknown {what} field(s) "
+            f"{sorted(unknown)}; check for a typo."
+        )
+
+
 def _implement(record: dict) -> Implement:
+    _reject_unknown(record, _IMPLEMENT_KEYS, "implement")
     return Implement(
         id=record["id"],
         manufacturer=record["manufacturer"],
@@ -66,6 +97,7 @@ def _implement(record: dict) -> Implement:
         draft_class=record.get("draft_class"),
         working_depth=_param(record, "working_depth", required=False),
         draft_power_per_width=_param(record, "draft_power_per_width", required=False),
+        notes=record.get("notes"),
     )
 
 

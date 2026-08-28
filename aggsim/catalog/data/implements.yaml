@@ -418,3 +418,476 @@ implements:
       rationale: >-
         No published draft figure. Anchored below the 2230FH tillage range;
         ordering assumed, not sourced.
+
+  - id: laserweeder_g2_200
+    manufacturer: Carbon Robotics
+    model: LaserWeeder G2 200
+    type: mounted
+    draft_class: laserweeder_class
+    notes: >-
+      Autonomous laser weeding implement on a CAT 3 three-point hitch, 4 modules of 8 x 240 W diode lasers. Mounted, so it has no hitch degree of freedom and cannot exhibit the Stage 4 lag mechanism.
+    working_width:
+      value: 2.54
+      unit: m
+      source: https://carbonrobotics.com/laserweeder-g2-200
+      note: >-
+        "100 W ... inches (2.54 W ... meters)" as printed
+    mass:
+      value: 1769
+      unit: kg
+      source: https://carbonrobotics.com/laserweeder-g2-200
+      note: >-
+        "3,900 lbs (1,769 kg)" as printed
+    draft_power_per_width:
+      value: 5000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure. A laser weeder does not engage soil at all, so demand is below every tillage class here; its real load is the front-PTO generator, which this model does not represent. Anchored to the only manufacturer-published draft figure in this
+        catalog (John Deere 2230FH, 19600-29400 W/m). The intensity ordering
+        across implement classes is assumed, not sourced.
+
+  - id: laserweeder_g2_300
+    manufacturer: Carbon Robotics
+    model: LaserWeeder G2 300
+    type: mounted
+    draft_class: laserweeder_class
+    notes: >-
+      CAT 3 three-point hitch, 6 modules of 12 x 240 W diode lasers.
+    working_width:
+      value: 3.5
+      unit: m
+      source: https://carbonrobotics.com/laserweeder-g2-300
+      note: >-
+        "138 inches wide (3.50 m)" as printed
+    mass:
+      value: 2540
+      unit: kg
+      source: https://carbonrobotics.com/laserweeder-g2-300
+      note: >-
+        "5,600 lbs (2,540 kg)" as printed
+    draft_power_per_width:
+      value: 5000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure; a laser weeder does not engage soil. Anchored to the only manufacturer-published draft figure in this
+        catalog (John Deere 2230FH, 19600-29400 W/m). The intensity ordering
+        across implement classes is assumed, not sourced.
+
+  - id: verdant_sharpshooter
+    manufacturer: Verdant Robotics
+    model: Sharpshooter
+    type: mounted
+    draft_class: verdant_class
+    notes: >-
+      Targeted spray implement on a CAT I/II three-point hitch, 120-480 shots per second.
+    working_width:
+      value: 3.52
+      unit: m
+      assumed: true
+      rationale: >-
+        Verdant does not publish a working width -- the implement is sold
+        as configurable in row count. 3.52 m is DERIVED from the published
+        "up to 7 acres per hour" at the published "up to five miles per hour",
+        which assumes continuous operation with no turning or refill time and
+        so is an upper bound on width. Treat as an assumption, not a spec.
+    mass:
+      value: 816
+      unit: kg
+      source: https://www.verdantrobotics.com/product
+      note: >-
+        "1,800-pound implement" as printed
+    draft_power_per_width:
+      value: 5000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure; a targeted sprayer does not engage soil. Anchored to the only manufacturer-published draft figure in this
+        catalog (John Deere 2230FH, 19600-29400 W/m). The intensity ordering
+        across implement classes is assumed, not sourced.
+
+  - id: vaderstad_rapid_a_400s
+    manufacturer: Vaderstad
+    model: Rapid A 400S
+    type: trailed
+    draft_class: vaderstad_class
+    working_width:
+      value: 4.0
+      unit: m
+      source: https://www.vaderstad.com/en/drilling/rapid-seed-drills/rapid-a-s
+      note: >-
+        "400S" 4.0 m working width as printed
+    mass:
+      value: 5200
+      unit: kg
+      source: https://www.vaderstad.com/en/drilling/rapid-seed-drills/rapid-a-s
+      note: >-
+        "5,200 kg" as printed
+    hitch_distance:
+      value: 0.9
+      unit: m
+      assumed: true
+      rationale: >-
+        Tractor rear axle to drawbar hitch (the 'a' term of the
+        one-trailer model). Not published, and a property of the pairing
+        rather than of the implement. Stage 6 sweeps it.
+    implement_wheelbase:
+      value: 3.6
+      unit: m
+      assumed: true
+      rationale: >-
+        Hitch point to implement axle (the 'b' term), the length that
+        sets how fast hitch angle responds. Not published. Nominal for
+        a drawn pneumatic seed drill. Stage 6 sweeps this geometry.
+    draft_power_per_width:
+      value: 12000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure. Vaderstad publishes a minimum TRACTOR power of 130 hp for this model (32.5 hp/m), but that is total tractor power rather than drawbar draft and cannot be used directly. Anchored to the only manufacturer-published draft figure in this
+        catalog (John Deere 2230FH, 19600-29400 W/m). The intensity ordering
+        across implement classes is assumed, not sourced.
+
+  - id: vaderstad_rapid_a_800s
+    manufacturer: Vaderstad
+    model: Rapid A 800S
+    type: trailed
+    draft_class: vaderstad_class
+    working_width:
+      value: 8.0
+      unit: m
+      source: https://www.vaderstad.com/en/drilling/rapid-seed-drills/rapid-a-s
+      note: >-
+        "800S" 8.0 m working width as printed
+    mass:
+      value: 7700
+      unit: kg
+      source: https://www.vaderstad.com/en/drilling/rapid-seed-drills/rapid-a-s
+      note: >-
+        "7,700 kg" as printed
+    hitch_distance:
+      value: 0.9
+      unit: m
+      assumed: true
+      rationale: >-
+        Tractor rear axle to drawbar hitch (the 'a' term of the
+        one-trailer model). Not published, and a property of the pairing
+        rather than of the implement. Stage 6 sweeps it.
+    implement_wheelbase:
+      value: 5.0
+      unit: m
+      assumed: true
+      rationale: >-
+        Hitch point to implement axle (the 'b' term), the length that
+        sets how fast hitch angle responds. Not published. Nominal for
+        a drawn pneumatic seed drill. Stage 6 sweeps this geometry.
+    draft_power_per_width:
+      value: 12000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure. Vaderstad publishes a minimum TRACTOR power of 240 hp (30 hp/m), which is total tractor power, not drawbar draft. Anchored to the only manufacturer-published draft figure in this
+        catalog (John Deere 2230FH, 19600-29400 W/m). The intensity ordering
+        across implement classes is assumed, not sourced.
+
+  - id: horsch_joker_rt_narrow
+    manufacturer: HORSCH
+    model: Joker RT (5.15 m)
+    type: trailed
+    draft_class: horsch_class
+    working_width:
+      value: 5.15
+      unit: m
+      source: https://www.horsch.com/en/products/soil-cultivation/disc-harrows/joker-rt
+      note: >-
+        "Working width 5,15 - 12,25 m" as printed; narrow end
+    mass:
+      value: 6000
+      unit: kg
+      assumed: true
+      rationale: >-
+        HORSCH does not publish machine mass on the Joker RT product page.
+        A widely-cited 9.4 t figure for the Joker 8 RT originates from a
+        farming SIMULATION GAME wiki and is not a manufacturer specification;
+        it is deliberately not used. Nominal placeholder, unused by Stages 1-6.
+    hitch_distance:
+      value: 0.9
+      unit: m
+      assumed: true
+      rationale: >-
+        Tractor rear axle to drawbar hitch (the 'a' term of the
+        one-trailer model). Not published, and a property of the pairing
+        rather than of the implement. Stage 6 sweeps it.
+    implement_wheelbase:
+      value: 4.2
+      unit: m
+      assumed: true
+      rationale: >-
+        Hitch point to implement axle (the 'b' term), the length that
+        sets how fast hitch angle responds. Not published. Nominal for
+        a trailed compact disc harrow. Stage 6 sweeps this geometry.
+    draft_power_per_width:
+      value: 25000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure. Placed near the top of the 2230FH range: tandem disc harrowing engages more soil than field cultivation. Anchored to the only manufacturer-published draft figure in this
+        catalog (John Deere 2230FH, 19600-29400 W/m). The intensity ordering
+        across implement classes is assumed, not sourced.
+
+  - id: horsch_joker_rt_wide
+    manufacturer: HORSCH
+    model: Joker RT (12.25 m)
+    type: trailed
+    draft_class: horsch_class
+    working_width:
+      value: 12.25
+      unit: m
+      source: https://www.horsch.com/en/products/soil-cultivation/disc-harrows/joker-rt
+      note: >-
+        "Working width 5,15 - 12,25 m" as printed; wide end
+    mass:
+      value: 12000
+      unit: kg
+      assumed: true
+      rationale: >-
+        HORSCH does not publish machine mass. Nominal placeholder, unused by Stages 1-6.
+    hitch_distance:
+      value: 0.9
+      unit: m
+      assumed: true
+      rationale: >-
+        Tractor rear axle to drawbar hitch (the 'a' term of the
+        one-trailer model). Not published, and a property of the pairing
+        rather than of the implement. Stage 6 sweeps it.
+    implement_wheelbase:
+      value: 6.0
+      unit: m
+      assumed: true
+      rationale: >-
+        Hitch point to implement axle (the 'b' term), the length that
+        sets how fast hitch angle responds. Not published. Nominal for
+        a trailed compact disc harrow. Stage 6 sweeps this geometry.
+    draft_power_per_width:
+      value: 25000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure; near the top of the 2230FH range. Anchored to the only manufacturer-published draft figure in this
+        catalog (John Deere 2230FH, 19600-29400 W/m). The intensity ordering
+        across implement classes is assumed, not sourced.
+
+  - id: kuhn_excelerator_8005_50
+    manufacturer: KUHN Krause
+    model: Excelerator 8005-50
+    type: trailed
+    draft_class: kuhn_class
+    notes: >-
+      Hitched by articulating ball, CAT V -- a heavier hitch class than the drawbar assumed elsewhere in this catalog.
+    working_width:
+      value: 15.2
+      unit: m
+      source: https://www.kuhn-usa.com/crop/tillage-tools/high-speed-vertical-tillage/excelerator-8005
+      note: >-
+        "50' (15.2 m)" as printed
+    mass:
+      value: 19550
+      unit: kg
+      source: https://www.kuhn-usa.com/crop/tillage-tools/high-speed-vertical-tillage/excelerator-8005
+      note: >-
+        "43,100 lb (19 550 kg)" as printed
+    hitch_distance:
+      value: 0.9
+      unit: m
+      assumed: true
+      rationale: >-
+        Tractor rear axle to drawbar hitch (the 'a' term of the
+        one-trailer model). Not published, and a property of the pairing
+        rather than of the implement. Stage 6 sweeps it.
+    implement_wheelbase:
+      value: 6.5
+      unit: m
+      assumed: true
+      rationale: >-
+        Hitch point to implement axle (the 'b' term), the length that
+        sets how fast hitch angle responds. Not published. Nominal for
+        a large drawn vertical tillage tool. Stage 6 sweeps this geometry.
+    draft_power_per_width:
+      value: 22000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure. High-speed vertical tillage is placed just below tandem disking and within the 2230FH range. Anchored to the only manufacturer-published draft figure in this
+        catalog (John Deere 2230FH, 19600-29400 W/m). The intensity ordering
+        across implement classes is assumed, not sourced.
+
+  - id: amazone_catros_4002_2ts
+    manufacturer: AMAZONE
+    model: Catros 4002-2TS
+    type: trailed
+    draft_class: amazone_class
+    working_width:
+      value: 4.0
+      unit: m
+      source: https://amazone.net/en/products-digital-solutions/agricultural-technology/cultivation/compact-disc-harrows/52296-52296
+      note: >-
+        "4.0 m (Catros/Catros+ 4002-2TS)" as printed
+    mass:
+      value: 4200
+      unit: kg
+      assumed: true
+      rationale: >-
+        AMAZONE does not publish machine mass on this product page. Nominal placeholder, unused by Stages 1-6.
+    hitch_distance:
+      value: 0.9
+      unit: m
+      assumed: true
+      rationale: >-
+        Tractor rear axle to drawbar hitch (the 'a' term of the
+        one-trailer model). Not published, and a property of the pairing
+        rather than of the implement. Stage 6 sweeps it.
+    implement_wheelbase:
+      value: 3.8
+      unit: m
+      assumed: true
+      rationale: >-
+        Hitch point to implement axle (the 'b' term), the length that
+        sets how fast hitch angle responds. Not published. Nominal for
+        a trailed compact disc harrow. Stage 6 sweeps this geometry.
+    draft_power_per_width:
+      value: 25000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure; near the top of the 2230FH range for disc harrowing. Anchored to the only manufacturer-published draft figure in this
+        catalog (John Deere 2230FH, 19600-29400 W/m). The intensity ordering
+        across implement classes is assumed, not sourced.
+
+  - id: amazone_catros_6002_2ts
+    manufacturer: AMAZONE
+    model: Catros 6002-2TS
+    type: trailed
+    draft_class: amazone_class
+    working_width:
+      value: 6.0
+      unit: m
+      source: https://amazone.net/en/products-digital-solutions/agricultural-technology/cultivation/compact-disc-harrows/52296-52296
+      note: >-
+        "6.0 m (Catros/Catros+ 6002-2TS)" as printed
+    mass:
+      value: 6300
+      unit: kg
+      assumed: true
+      rationale: >-
+        AMAZONE does not publish machine mass on this product page. Nominal placeholder, unused by Stages 1-6.
+    hitch_distance:
+      value: 0.9
+      unit: m
+      assumed: true
+      rationale: >-
+        Tractor rear axle to drawbar hitch (the 'a' term of the
+        one-trailer model). Not published, and a property of the pairing
+        rather than of the implement. Stage 6 sweeps it.
+    implement_wheelbase:
+      value: 4.4
+      unit: m
+      assumed: true
+      rationale: >-
+        Hitch point to implement axle (the 'b' term), the length that
+        sets how fast hitch angle responds. Not published. Nominal for
+        a trailed compact disc harrow. Stage 6 sweeps this geometry.
+    draft_power_per_width:
+      value: 25000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure; near the top of the 2230FH range. Anchored to the only manufacturer-published draft figure in this
+        catalog (John Deere 2230FH, 19600-29400 W/m). The intensity ordering
+        across implement classes is assumed, not sourced.
+
+  - id: great_plains_turbomax_85
+    manufacturer: Great Plains
+    model: Turbo-Max (8.5 ft)
+    type: trailed
+    draft_class: great_class
+    working_width:
+      value: 2.591
+      unit: m
+      source: https://www.farm-equipment.com/articles/15188-great-plains-mfg-turbo-max-vertical-tillage-tool
+      note: >-
+        "available from 8.5-48 feet" as printed; narrow end, 8.5 ft = 2.591 m
+    mass:
+      value: 2800
+      unit: kg
+      assumed: true
+      rationale: >-
+        Great Plains does not publish machine mass in the retrieved source.
+        A 22,100 lb figure for the 2400TM appeared in a search summary but
+        could not be verified against primary text, so it is not used here.
+    hitch_distance:
+      value: 0.85
+      unit: m
+      assumed: true
+      rationale: >-
+        Tractor rear axle to drawbar hitch (the 'a' term of the
+        one-trailer model). Not published, and a property of the pairing
+        rather than of the implement. Stage 6 sweeps it.
+    implement_wheelbase:
+      value: 3.0
+      unit: m
+      assumed: true
+      rationale: >-
+        Hitch point to implement axle (the 'b' term), the length that
+        sets how fast hitch angle responds. Not published. Nominal for
+        a small drawn vertical tillage tool. Stage 6 sweeps this geometry.
+    draft_power_per_width:
+      value: 22000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure for this size; vertical tillage placed within the 2230FH range. Anchored to the only manufacturer-published draft figure in this
+        catalog (John Deere 2230FH, 19600-29400 W/m). The intensity ordering
+        across implement classes is assumed, not sourced.
+
+  - id: great_plains_turbomax_48
+    manufacturer: Great Plains
+    model: Turbo-Max (48 ft)
+    type: trailed
+    draft_class: great_class
+    working_width:
+      value: 14.63
+      unit: m
+      source: https://www.farm-equipment.com/articles/15188-great-plains-mfg-turbo-max-vertical-tillage-tool
+      note: >-
+        "available from 8.5-48 feet" as printed; wide end, 48 ft = 14.630 m
+    mass:
+      value: 15000
+      unit: kg
+      assumed: true
+      rationale: >-
+        Great Plains does not publish machine mass in the retrieved source. Nominal placeholder, unused by Stages 1-6.
+    hitch_distance:
+      value: 0.9
+      unit: m
+      assumed: true
+      rationale: >-
+        Tractor rear axle to drawbar hitch (the 'a' term of the
+        one-trailer model). Not published, and a property of the pairing
+        rather than of the implement. Stage 6 sweeps it.
+    implement_wheelbase:
+      value: 6.4
+      unit: m
+      assumed: true
+      rationale: >-
+        Hitch point to implement axle (the 'b' term), the length that
+        sets how fast hitch angle responds. Not published. Nominal for
+        a large drawn vertical tillage tool. Stage 6 sweeps this geometry.
+    draft_power_per_width:
+      value: 22000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure for this size; vertical tillage within the 2230FH range. Anchored to the only manufacturer-published draft figure in this
+        catalog (John Deere 2230FH, 19600-29400 W/m). The intensity ordering
+        across implement classes is assumed, not sourced.

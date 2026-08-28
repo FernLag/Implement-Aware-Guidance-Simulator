@@ -180,3 +180,74 @@ def test_steering_angle_is_flagged_assumed_everywhere(catalog):
     """No manufacturer in this catalog publishes steering geometry."""
     for tractor in catalog.tractors.values():
         assert tractor.max_steer_angle.assumed
+
+
+# --- expanded catalog (added after the Stage 6 sweep) ---------------------
+
+def test_catalog_covers_the_major_manufacturers(catalog):
+    makers = {t.manufacturer for t in catalog.tractors.values()}
+    assert {"John Deere", "Case IH", "New Holland", "Kubota", "Fendt",
+            "Massey Ferguson", "CLAAS", "Valtra", "Mahindra",
+            "Deutz-Fahr"} <= makers
+
+
+def test_catalog_includes_autonomous_and_robotic_machines(catalog):
+    assert catalog.tractor("monarch_mk_v").steering_type == "wheel_steer"
+    makers = {i.manufacturer for i in catalog.implements.values()}
+    assert {"Carbon Robotics", "Verdant Robotics"} <= makers
+
+
+def test_articulated_tractors_are_flagged(catalog):
+    articulated = [t for t in catalog.tractors.values()
+                   if t.steering_type == "articulated"]
+    assert len(articulated) >= 2
+    for t in articulated:
+        assert t.notes and "articulat" in t.notes.lower()
+
+
+def test_articulated_tractors_are_refused_by_the_vehicle_model(catalog):
+    """Better an error than plausible numbers from the wrong model."""
+    from aggsim.model import from_tractor
+
+    for t in catalog.tractors.values():
+        if t.steering_type == "articulated":
+            with pytest.raises(ValueError, match="articulation"):
+                from_tractor(t)
+        else:
+            from_tractor(t)
+
+
+def test_unknown_steering_type_is_rejected():
+    with pytest.raises(ValueError, match="steering_type"):
+        Tractor(
+            id="t", manufacturer="M", model="X", years="2020",
+            wheelbase=Param(2.5, "m", source="http://x"),
+            mass=Param(5000, "kg", source="http://x"),
+            engine_power=Param(1e5, "W", source="http://x"),
+            drawbar_power=Param(7e4, "W", source="http://x"),
+            max_steer_angle=Param(0.7, "rad", assumed=True, rationale="r"),
+            steering_type="crab",
+        )
+
+
+def test_typo_in_a_field_name_is_rejected_not_dropped(tmp_path):
+    """A misspelt key would otherwise silently discard a parameter."""
+    (tmp_path / "tractors.yaml").write_text(
+        "tractors:\n  - id: t\n    manufacturer: M\n    model: X\n"
+        "    wheelbse: {value: 2.5, unit: m, source: 'http://x'}\n"
+    )
+    (tmp_path / "implements.yaml").write_text("implements: []\n")
+    with pytest.raises(ValueError, match="unknown tractor field"):
+        load_catalog(tmp_path)
+
+
+def test_mounted_and_trailed_are_both_well_represented(catalog):
+    mounted = [i for i in catalog.implements.values() if i.type == "mounted"]
+    trailed = [i for i in catalog.implements.values() if i.type == "trailed"]
+    assert len(mounted) >= 4
+    assert len(trailed) >= 12
+
+
+def test_catalog_size(catalog):
+    assert len(catalog.tractors) >= 18
+    assert len(catalog.implements) >= 21
