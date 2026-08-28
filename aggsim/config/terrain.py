@@ -14,6 +14,22 @@ down-slope gravity component and lateral tyre resistance -- a full model would
 resolve tyre cornering stiffness and normal load. It is unpublished, hence
 assumed and swept.
 
+IMPLEMENT SIDE-DRAFT. The implement sits on the same slope and drifts too,
+but not necessarily at the same rate: soil-engaging tools resist lateral
+motion far more strongly than tyres do. `implement_drift_ratio` carries that
+difference.
+
+This parameter is not cosmetic. Setting it to 1.0 makes zero hitch angle an
+EXACT equilibrium of the trailed kinematics -- v_d cos(0) - v_d = 0 -- so the
+implement aligns perfectly with the tractor and side-draft produces no
+steady-state divergence at all. In other words the brief's second divergence
+mechanism is inert unless the two bodies drift differently. The steady-state
+hitch angle follows from linearising the hitch equation:
+
+    theta_hitch ~= v_d (r - 1) / v_eff
+
+which is zero at r = 1 and grows with the mismatch.
+
 WHEEL SLIP. Forward velocity is scaled by (1 - s). The yaw equation uses that
 same reduced velocity, which is what "reduce steering effectiveness
 proportionally" amounts to: turning follows actual travel, not wheel rotation.
@@ -52,6 +68,22 @@ DEFAULT_DRIFT_COEFFICIENT = Param(
 )
 
 
+DEFAULT_IMPLEMENT_DRIFT_RATIO = Param(
+    value=1.0,
+    unit="dimensionless",
+    assumed=True,
+    rationale=(
+        "Ratio of the implement's lateral drift rate to the tractor's. No "
+        "published value exists. 1.0 is the NEUTRAL choice, not the physical "
+        "one: it makes zero hitch angle an exact equilibrium, so side-draft "
+        "contributes no steady-state divergence and the brief's second "
+        "mechanism is inert. A soil-engaging implement should resist lateral "
+        "motion more than tyres do, implying a ratio below 1, but the value "
+        "is unmeasured. Stage 4 reports both cases; Stage 6 must sweep it."
+    ),
+)
+
+
 @dataclass(frozen=True)
 class Terrain:
     """Side slope and slip. Defaults are flat ground with no slip."""
@@ -60,6 +92,7 @@ class Terrain:
     slope_sign: float = 1.0  # +1 drift to the left of heading, -1 to the right
     slip: float = 0.0  # travel reduction fraction, 0 to <1
     drift_coefficient: Param = DEFAULT_DRIFT_COEFFICIENT
+    implement_drift_ratio: Param = DEFAULT_IMPLEMENT_DRIFT_RATIO
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.slip < 1.0:
@@ -75,6 +108,11 @@ class Terrain:
         return self.slope_sign * self.drift_coefficient.value * G * np.sin(self.slope_angle)
 
     @property
+    def implement_drift(self) -> float:
+        """Signed drift velocity of the implement, positive to its left."""
+        return self.implement_drift_ratio.value * self.lateral_drift
+
+    @property
     def speed_factor(self) -> float:
         return 1.0 - self.slip
 
@@ -87,7 +125,12 @@ class Terrain:
         return self.slip != 0.0
 
     def params(self) -> dict[str, Param]:
-        return {"drift_coefficient": self.drift_coefficient} if self.slope_enabled else {}
+        if not self.slope_enabled:
+            return {}
+        return {
+            "drift_coefficient": self.drift_coefficient,
+            "implement_drift_ratio": self.implement_drift_ratio,
+        }
 
 
 FLAT = Terrain()

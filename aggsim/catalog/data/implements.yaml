@@ -6,8 +6,11 @@
 # `note` records the derivation.
 #
 # hitch_distance and implement_wheelbase are assumed for every trailed entry.
-# No manufacturer in this catalog publishes drawbar-to-implement-axle
-# geometry. Stage 6 sweeps hitch distance as an independent variable, so no
+# They are the 'a' and 'b' terms of the one-trailer kinematic model:
+#   a = tractor rear axle -> drawbar hitch point   (~0.9 m)
+#   b = hitch point -> implement axle              (3-6 m)
+# An earlier revision of this file conflated the two, giving 'a' the 3-6 m
+# figure that belongs to 'b'. No manufacturer publishes either. Stage 6 sweeps hitch distance as an independent variable, so no
 # reported result may depend on these defaults -- they are starting points
 # for the sweep, not findings.
 #
@@ -64,19 +67,24 @@ implements:
         is kinematic); it is carried for the Stage 7 URDF and must be
         replaced with a dealer spec sheet figure before Stage 7.
     hitch_distance:
-      value: 3.2
+      value: 0.85
       unit: m
       assumed: true
       rationale: >-
-        Drawbar-to-implement-axle distance is not published. Nominal value;
-        Stage 6 sweeps hitch distance, so results must not depend on it.
+        Distance from the TRACTOR REAR AXLE to the drawbar hitch point (the
+        'a' term of the one-trailer model). Not published, and strictly a
+        property of the pairing rather than of the implement. 0.9 m is
+        representative of a rear drawbar. Stage 6 sweeps hitch distance, so
+        no result may depend on this default.
     implement_wheelbase:
-      value: 1.2
+      value: 3.0
       unit: m
       assumed: true
       rationale: >-
-        Not published. Nominal value for a single-axle drawn drill; Stage 6
-        sweeps this geometry.
+        Distance from the hitch point to the implement axle (the 'b' term of
+        the one-trailer model), the length that sets how fast hitch angle
+        responds. Not published. Nominal value for a single-axle drawn box drill. Stage 6 sweeps
+        this geometry.
     draft_power_per_width:
       value: 10000
       unit: W/m
@@ -104,17 +112,24 @@ implements:
         Not published by John Deere. Nominal placeholder; unused by Stages
         1-6, replace before Stage 7.
     hitch_distance:
-      value: 3.6
+      value: 0.85
       unit: m
       assumed: true
       rationale: >-
-        Not published. Nominal value; Stage 6 sweeps hitch distance.
+        Distance from the TRACTOR REAR AXLE to the drawbar hitch point (the
+        'a' term of the one-trailer model). Not published, and strictly a
+        property of the pairing rather than of the implement. 0.9 m is
+        representative of a rear drawbar. Stage 6 sweeps hitch distance, so
+        no result may depend on this default.
     implement_wheelbase:
-      value: 1.4
+      value: 3.4
       unit: m
       assumed: true
       rationale: >-
-        Not published. Nominal value; Stage 6 sweeps this geometry.
+        Distance from the hitch point to the implement axle (the 'b' term of
+        the one-trailer model), the length that sets how fast hitch angle
+        responds. Not published. Nominal value for a single-axle drawn box drill. Stage 6 sweeps
+        this geometry.
     draft_power_per_width:
       value: 10000
       unit: W/m
@@ -141,17 +156,24 @@ implements:
         Case IH does not publish machine mass on the product page. Nominal
         placeholder; unused by Stages 1-6, replace before Stage 7.
     hitch_distance:
+      value: 0.9
+      unit: m
+      assumed: true
+      rationale: >-
+        Distance from the TRACTOR REAR AXLE to the drawbar hitch point (the
+        'a' term of the one-trailer model). Not published, and strictly a
+        property of the pairing rather than of the implement. 0.9 m is
+        representative of a rear drawbar. Stage 6 sweeps hitch distance, so
+        no result may depend on this default.
+    implement_wheelbase:
       value: 4.5
       unit: m
       assumed: true
       rationale: >-
-        Not published. Nominal value; Stage 6 sweeps hitch distance.
-    implement_wheelbase:
-      value: 2.0
-      unit: m
-      assumed: true
-      rationale: >-
-        Not published. Nominal value; Stage 6 sweeps this geometry.
+        Distance from the hitch point to the implement axle (the 'b' term of
+        the one-trailer model), the length that sets how fast hitch angle
+        responds. Not published. Nominal value for a drawn tandem disk harrow. Stage 6 sweeps
+        this geometry.
     draft_power_per_width:
       value: 25000
       unit: W/m
@@ -179,17 +201,24 @@ implements:
         Not published by Case IH. Nominal placeholder; unused by Stages 1-6,
         replace before Stage 7.
     hitch_distance:
-      value: 5.0
+      value: 0.9
       unit: m
       assumed: true
       rationale: >-
-        Not published. Nominal value; Stage 6 sweeps hitch distance.
+        Distance from the TRACTOR REAR AXLE to the drawbar hitch point (the
+        'a' term of the one-trailer model). Not published, and strictly a
+        property of the pairing rather than of the implement. 0.9 m is
+        representative of a rear drawbar. Stage 6 sweeps hitch distance, so
+        no result may depend on this default.
     implement_wheelbase:
-      value: 2.4
+      value: 5.2
       unit: m
       assumed: true
       rationale: >-
-        Not published. Nominal value; Stage 6 sweeps this geometry.
+        Distance from the hitch point to the implement axle (the 'b' term of
+        the one-trailer model), the length that sets how fast hitch angle
+        responds. Not published. Nominal value for a drawn tandem disk harrow. Stage 6 sweeps
+        this geometry.
     draft_power_per_width:
       value: 25000
       unit: W/m
@@ -221,17 +250,24 @@ implements:
       source: https://www.deere.com/en/tillage/2230-floating-hitch-field-cultivator/
       note: "working depths up to 5 in as printed"
     hitch_distance:
+      value: 0.9
+      unit: m
+      assumed: true
+      rationale: >-
+        Distance from the TRACTOR REAR AXLE to the drawbar hitch point (the
+        'a' term of the one-trailer model). Not published, and strictly a
+        property of the pairing rather than of the implement. 0.9 m is
+        representative of a rear drawbar. Stage 6 sweeps hitch distance, so
+        no result may depend on this default.
+    implement_wheelbase:
       value: 5.0
       unit: m
       assumed: true
       rationale: >-
-        Not published. Nominal value; Stage 6 sweeps hitch distance.
-    implement_wheelbase:
-      value: 2.2
-      unit: m
-      assumed: true
-      rationale: >-
-        Not published. Nominal value; Stage 6 sweeps this geometry.
+        Distance from the hitch point to the implement axle (the 'b' term of
+        the one-trailer model), the length that sets how fast hitch angle
+        responds. Not published. Nominal value for a drawn field cultivator. Stage 6 sweeps
+        this geometry.
     draft_power_per_width:
       value: 29400
       unit: W/m
@@ -265,17 +301,24 @@ implements:
       source: https://www.deere.com/en/tillage/2230-floating-hitch-field-cultivator/
       note: "working depths up to 5 in as printed"
     hitch_distance:
-      value: 6.0
+      value: 0.9
       unit: m
       assumed: true
       rationale: >-
-        Not published. Nominal value; Stage 6 sweeps hitch distance.
+        Distance from the TRACTOR REAR AXLE to the drawbar hitch point (the
+        'a' term of the one-trailer model). Not published, and strictly a
+        property of the pairing rather than of the implement. 0.9 m is
+        representative of a rear drawbar. Stage 6 sweeps hitch distance, so
+        no result may depend on this default.
     implement_wheelbase:
-      value: 3.0
+      value: 6.2
       unit: m
       assumed: true
       rationale: >-
-        Not published. Nominal value; Stage 6 sweeps this geometry.
+        Distance from the hitch point to the implement axle (the 'b' term of
+        the one-trailer model), the length that sets how fast hitch angle
+        responds. Not published. Nominal value for a drawn field cultivator. Stage 6 sweeps
+        this geometry.
     draft_power_per_width:
       value: 29400
       unit: W/m
@@ -304,17 +347,24 @@ implements:
         Not published by John Deere. Nominal placeholder; unused by Stages
         1-6, replace before Stage 7.
     hitch_distance:
+      value: 0.9
+      unit: m
+      assumed: true
+      rationale: >-
+        Distance from the TRACTOR REAR AXLE to the drawbar hitch point (the
+        'a' term of the one-trailer model). Not published, and strictly a
+        property of the pairing rather than of the implement. 0.9 m is
+        representative of a rear drawbar. Stage 6 sweeps hitch distance, so
+        no result may depend on this default.
+    implement_wheelbase:
       value: 5.5
       unit: m
       assumed: true
       rationale: >-
-        Not published. Nominal value; Stage 6 sweeps hitch distance.
-    implement_wheelbase:
-      value: 2.6
-      unit: m
-      assumed: true
-      rationale: >-
-        Not published. Nominal value; Stage 6 sweeps this geometry.
+        Distance from the hitch point to the implement axle (the 'b' term of
+        the one-trailer model), the length that sets how fast hitch angle
+        responds. Not published. Nominal value for a drawn row-crop planter. Stage 6 sweeps
+        this geometry.
     draft_power_per_width:
       value: 8000
       unit: W/m
@@ -343,17 +393,24 @@ implements:
         Not published by John Deere. Nominal placeholder; unused by Stages
         1-6, replace before Stage 7.
     hitch_distance:
-      value: 6.0
+      value: 0.9
       unit: m
       assumed: true
       rationale: >-
-        Not published. Nominal value; Stage 6 sweeps hitch distance.
+        Distance from the TRACTOR REAR AXLE to the drawbar hitch point (the
+        'a' term of the one-trailer model). Not published, and strictly a
+        property of the pairing rather than of the implement. 0.9 m is
+        representative of a rear drawbar. Stage 6 sweeps hitch distance, so
+        no result may depend on this default.
     implement_wheelbase:
-      value: 2.8
+      value: 6.2
       unit: m
       assumed: true
       rationale: >-
-        Not published. Nominal value; Stage 6 sweeps this geometry.
+        Distance from the hitch point to the implement axle (the 'b' term of
+        the one-trailer model), the length that sets how fast hitch angle
+        responds. Not published. Nominal value for a drawn row-crop planter. Stage 6 sweeps
+        this geometry.
     draft_power_per_width:
       value: 8000
       unit: W/m

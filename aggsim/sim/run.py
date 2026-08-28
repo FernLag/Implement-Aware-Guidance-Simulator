@@ -23,7 +23,8 @@ from ..config.steering import SteeringParams
 from ..config.terrain import Terrain
 from ..geometry.abline import ABLine
 from ..model.state import State
-from ..model.vehicle import VehicleParams, rk4_step, rk4_step_augmented
+from ..model.implement import ImplementGeometry, edge_errors, implement_position
+from ..model.vehicle import VehicleParams, rk4_step_plant
 
 
 @dataclass(frozen=True)
@@ -49,7 +50,24 @@ class SimLog:
     theta: np.ndarray
     delta: np.ndarray  # actual steering angle at the wheels
     delta_cmd: np.ndarray  # controller output
-    cross_track: np.ndarray
+    cross_track: np.ndarray  # tractor rear axle, signed, + left of line
+    # Stage 4 signals. None when the run carries no implement.
+    theta_implement: np.ndarray | None = None
+    implement_cross_track: np.ndarray | None = None  # implement centreline
+    edge_left: np.ndarray | None = None  # left edge placement error
+    edge_right: np.ndarray | None = None  # right edge placement error
+
+    @property
+    def worst_edge(self) -> np.ndarray:
+        """Signed larger-magnitude edge error at each step."""
+        if self.edge_left is None:
+            raise ValueError("run carried no implement")
+        pick = np.abs(self.edge_left) >= np.abs(self.edge_right)
+        return np.where(pick, self.edge_left, self.edge_right)
+
+    def rms_worst_edge(self, settle_time: float = 0.0) -> float:
+        mask = self.t >= settle_time
+        return float(np.sqrt(np.mean(self.worst_edge[mask] ** 2)))
 
     def rms_cross_track(self, settle_time: float = 0.0) -> float:
         mask = self.t >= settle_time
@@ -73,6 +91,7 @@ def simulate(
     steering: SteeringParams | None = None,
     initial_delta: float = 0.0,
     terrain: Terrain | None = None,
+    geometry: ImplementGeometry | None = None,
 ) -> SimLog:
     """Integrate the vehicle under a controller, logging error each step."""
     n = config.n_steps
@@ -83,8 +102,17 @@ def simulate(
     deltas = np.zeros(n + 1)
     cmds = np.zeros(n + 1)
     errors = np.zeros(n + 1)
+    theta_i = np.zeros(n + 1)
+    imp_err = np.zeros(n + 1)
+    edge_l = np.zeros(n + 1)
+    edge_r = np.zeros(n + 1)
 
-    vec = np.append(initial_state.as_array(), initial_delta)
+    # (x, y, theta, delta, theta_i). The implement starts aligned with the
+    # tractor, which is the steady state on flat ground with zero steering.
+    vec = np.array(
+        [initial_state.x, initial_state.y, initial_state.theta,
+         initial_delta, initial_state.theta]
+    )
 
     tau = steering.tau.value if steering else None
     rate_limit = steering.rate_limit.value if steering else None
@@ -105,17 +133,20 @@ def simulate(
         cmds[i] = delta_cmd
         errors[i] = line.cross_track(state.x, state.y)
 
+        if geometry is not None:
+            theta_i[i] = vec[4]
+            centre = implement_position(state.x, state.y, state.theta, vec[4], geometry)
+            imp_err[i] = line.cross_track(centre[0], centre[1])
+            edge_l[i], edge_r[i] = edge_errors(
+                line, state.x, state.y, state.theta, vec[4], geometry
+            )
+
         if i < n:
-            if steering is None:
-                vec[:3] = rk4_step(
-                    vec[:3], config.speed, delta_cmd, params.wheelbase, config.dt,
-                    terrain,
-                )
-            else:
-                vec = rk4_step_augmented(
-                    vec, config.speed, delta_cmd, params.wheelbase,
-                    tau, rate_limit, config.dt, terrain,
-                )
+            vec = rk4_step_plant(
+                vec, config.speed, delta_cmd, params.wheelbase,
+                tau, rate_limit, config.dt, terrain, geometry,
+            )
+            if steering is not None:
                 vec[3] = float(
                     np.clip(vec[3], -params.max_steer_angle, params.max_steer_angle)
                 )
@@ -123,4 +154,8 @@ def simulate(
     return SimLog(
         t=t, x=xs, y=ys, theta=thetas,
         delta=deltas, delta_cmd=cmds, cross_track=errors,
+        theta_implement=theta_i if geometry is not None else None,
+        implement_cross_track=imp_err if geometry is not None else None,
+        edge_left=edge_l if geometry is not None else None,
+        edge_right=edge_r if geometry is not None else None,
     )

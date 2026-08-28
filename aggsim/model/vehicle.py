@@ -141,3 +141,68 @@ def rk4_step_augmented(
     k3 = f(vec + 0.5 * dt * k2)
     k4 = f(vec + dt * k3)
     return vec + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
+
+
+def plant_derivative(
+    vec: np.ndarray, v: float, delta_cmd: float, wheelbase: float,
+    tau: float | None, rate_limit: float | None, terrain=None, geometry=None,
+) -> np.ndarray:
+    """Derivative of the full plant state (x, y, theta, delta, theta_i).
+
+    `tau is None` means an ideal actuator: the wheels are already at the
+    commanded angle, so delta has no dynamics of its own and its derivative
+    is zero (the caller assigns delta directly). That keeps Stages 1 and 3
+    bit-for-bit reproducible while Stage 4 runs on the same code path.
+
+    `geometry is None` means no implement; theta_i then simply tracks the
+    tractor heading so the state stays well defined.
+    """
+    from .implement import hitch_angle_derivative
+
+    theta, delta, theta_i = vec[2], vec[3], vec[4]
+    v_eff, drift = _terrain_terms(v, terrain)
+    theta_dot = (v_eff / wheelbase) * np.tan(delta)
+
+    delta_dot = (
+        0.0 if tau is None else steering_derivative(delta, delta_cmd, tau, rate_limit)
+    )
+
+    if geometry is None:
+        theta_i_dot = theta_dot
+    else:
+        # The implement drifts at its own rate (see Terrain: at ratio 1.0 the
+        # steady-state hitch angle is exactly zero, so side-draft contributes
+        # no steady divergence).
+        drift_i = drift if terrain is None else terrain.implement_drift
+        theta_i_dot = hitch_angle_derivative(
+            theta, theta_i, theta_dot, v_eff, drift, drift_i, geometry
+        )
+
+    return np.array(
+        [
+            v_eff * np.cos(theta) - drift * np.sin(theta),
+            v_eff * np.sin(theta) + drift * np.cos(theta),
+            theta_dot,
+            delta_dot,
+            theta_i_dot,
+        ]
+    )
+
+
+def rk4_step_plant(
+    vec: np.ndarray, v: float, delta_cmd: float, wheelbase: float,
+    tau: float | None, rate_limit: float | None, dt: float,
+    terrain=None, geometry=None,
+) -> np.ndarray:
+    """One RK4 step of the full plant, delta_cmd held across the step."""
+
+    def f(s: np.ndarray) -> np.ndarray:
+        return plant_derivative(
+            s, v, delta_cmd, wheelbase, tau, rate_limit, terrain, geometry
+        )
+
+    k1 = f(vec)
+    k2 = f(vec + 0.5 * dt * k1)
+    k3 = f(vec + 0.5 * dt * k2)
+    k4 = f(vec + dt * k3)
+    return vec + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
