@@ -3,16 +3,16 @@
 A Python simulation of how an agricultural tractor tracks a planned path under
 autosteer, built to compare two competing error objectives:
 
-1. **Tractor cross-track error** — how far the tractor's reference point is from the line
-2. **Implement edge error** — how far the implement's working edge is from where it should be
+1. **Tractor cross-track error**: how far the tractor's reference point is from the line
+2. **Implement edge error**: how far the implement's working edge is from where it should be
 
 **Central hypothesis:** the controller tuning that minimises tractor error is
 *not* the tuning that minimises implement-edge error, and the gap between them
 grows with implement width, hitch length, and side slope.
 
-This matters because coverage quality — skip and overlap between adjacent
-passes — depends on where the *implement* is, not where the tractor is. Nearly
-all published path-tracking work optimises tractor error.
+This matters because coverage quality, meaning skip and overlap between
+adjacent passes, depends on where the *implement* is, not where the tractor
+is. Nearly all published path-tracking work optimises tractor error.
 
 ---
 
@@ -25,8 +25,8 @@ python3 -m pip install -r requirements.txt
 python3 -m pytest tests/ -q          # 230 tests, ~85 s
 ```
 
-Requires Python 3.11+. Dependencies are NumPy, Matplotlib, PyYAML and pytest —
-no simulation frameworks. The integrator and vehicle model are written by hand
+Requires Python 3.11+. Dependencies are NumPy, Matplotlib, PyYAML and pytest.
+There are no simulation frameworks. The integrator and vehicle model are written by hand
 so their behaviour is fully understood and defensible.
 
 ---
@@ -58,7 +58,7 @@ and **Verdant Robotics Sharpshooter** as three-point mounted implements.
 Two entries carry a modelling caveat rather than a number. The **Case IH
 Steiger 500 Quadtrac** and **John Deere 9R 540** steer by frame articulation,
 which the Stage 1 bicycle model does not represent, so `from_tractor()`
-**refuses** them — an error beats plausible numbers from the wrong model.
+**refuses** them, an error beats plausible numbers from the wrong model.
 
 ### 2. Straight-line tracking  *(~5 s)*
 
@@ -75,7 +75,7 @@ A 3 m offset decays to ~1e-18 m. Look for: 0.136 m overshoot, settling under
 python3 scripts/stage2_actuator_dynamics.py
 ```
 
-The slowest script — it runs 300-second simulations to distinguish a decaying
+The slowest script, it runs 300-second simulations to distinguish a decaying
 transient from a sustained oscillation. Look for: onset at 9.75 m/s for
 k = 0.10, and panel (d), where the conclusion swings entirely on an assumed
 time constant.
@@ -90,7 +90,7 @@ python3 scripts/stage3_terrain.py
 and never returns to the line. Panel (b) plots the simulation against a closed
 form; they agree to 2.7e-13 m.
 
-### 5. The implement and the second metric  *(~40 s)*  ← start here
+### 5. The implement and the second metric  *(~40 s)*  <- start here
 
 ```bash
 python3 scripts/stage4_implement.py
@@ -118,7 +118,7 @@ python3 scripts/stage6_dual_objective.py
 
 The central experiment: 24 configurations, each scanned over 32 lookahead
 gains against three objectives. Writes `results/stage6_results.json` alongside
-the figure. Look for panel (b) — the divergence is negative everywhere, which
+the figure. Look for panel (b), the divergence is negative everywhere, which
 is the opposite sign to the hypothesis the project started from.
 
 **Shortest meaningful demo:** run step 1, then step 5.
@@ -136,7 +136,7 @@ On a 10° side slope with a 12.19 m trailed planter, at 3 m/s:
 
 Stanley improves the tractor metric by 34% but the edge metric by only 14%.
 The difference between the two metrics is **0.3725 m for every controller and
-every gain tested** — a controller-independent constant set by the crab angle
+every gain tested**, a controller-independent constant set by the crab angle
 acting on the implement's longitudinal offset.
 
 **Stage 6, the central experiment.** Across 24 configurations, the two optimal
@@ -144,10 +144,10 @@ lookahead gains diverge in every one, by more than one grid step in every one:
 
 | | k_tractor | k_implement | gap |
 |---|---|---|---|
-| mean over 24 configurations | — | — | **−0.087 s** |
+| mean over 24 configurations |, |, | **−0.087 s** |
 | range | 0.27–0.46 | 0.30–0.40 | −0.140 to −0.051 |
 
-So the hypothesis holds — but **the sign is the opposite of the one the
+So the hypothesis holds, but **the sign is the opposite of the one the
 project assumed**. The implement wants a *shorter* lookahead than the tractor,
 not a longer one. The brief expected aggressive tuning to whip a trailed
 implement; instead, over most of the configuration space, the implement
@@ -169,7 +169,7 @@ Three results that were not expected going in, each documented where it lives:
 - **A longer lookahead helps stability but hurts slope tracking.** Stage 2
   wants large `k`; Stage 3's `e_ss ∝ L_d` wants small.
 - **Skip and overlap do not follow either control objective.** A uniform
-  lateral offset creates no skip at all — it shifts the whole field pattern
+  lateral offset creates no skip at all, it shifts the whole field pattern
   without opening a gap. Skip is driven by implement *yaw*, so it falls
   monotonically with lookahead and wants the longest one searched, pulling
   against both control optima. Tuning for implement edge error actually makes
@@ -273,7 +273,7 @@ Assumptions are **printed by every script**, never silently applied.
 ### Controllers are pure functions
 
 A controller takes state and returns a steering command. No plotting, no I/O,
-no coupling to the simulation loop — the loop accepts any `State -> delta`
+no coupling to the simulation loop, the loop accepts any `State -> delta`
 callable and does not know which controller it is driving. Stage 7 wraps these
 same functions as ROS 2 nodes, so anything reaching outside the arguments
 would need a rewrite.
@@ -315,7 +315,7 @@ tests/            230 tests
   written with a minus accordingly.
 - **State is at the rear axle**, which makes the bicycle equations exact
   rather than approximate. Stanley's front-axle reference is computed from it.
-- **Edge error is measured against ±w/2**, not against the line — otherwise a
+- **Edge error is measured against ±w/2**, not against the line, otherwise a
   perfectly placed wide implement would report an error equal to its half
   width.
 
@@ -325,13 +325,13 @@ tests/            230 tests
 
 | Stage | State |
 |---|---|
-| 0 · Equipment catalog | done — 18 tractors, 21 implements |
+| 0 · Equipment catalog | done, 18 tractors, 21 implements |
 | 1 · Vehicle model, pure pursuit | done |
 | 2 · Steering actuator dynamics | done |
 | 3 · Terrain effects | done |
 | 4 · Implement model, second metric | done |
 | 5 · Stanley comparison | done |
-| 6 · Dual-objective tuning | done — 24 configurations |
+| 6 · Dual-objective tuning | done, 24 configurations |
 | 7 · ROS 2 / Gazebo validation | conditional on 0–6 |
 
 Stage 6 is complete and the divergence is real, but two caveats bound it.
@@ -369,10 +369,10 @@ just against previous output:
 
 Three tests are called for by name in the project brief:
 
-- **Geometry** — a vehicle on the line with zero heading error commands
+- **Geometry**, a vehicle on the line with zero heading error commands
   exactly zero steering. Enforced for *both* controllers.
-- **Catalog integrity** — every entry has a source or an explicit assumed flag.
-- **Degenerate case** — with zero implement width and zero hitch geometry,
+- **Catalog integrity**, every entry has a source or an explicit assumed flag.
+- **Degenerate case**, with zero implement width and zero hitch geometry,
   implement edge error reduces *exactly* to tractor cross-track error
   (`np.array_equal`, not `approx`). Three further tests confirm each degenerate
   condition is individually necessary, so it cannot pass for the wrong reason.
@@ -385,8 +385,8 @@ Path tracking for agricultural vehicles is well established; pure pursuit,
 Stanley, slip compensation and terrain effects all have substantial
 literature. This project claims no novelty in the controllers.
 
-The intended contribution is the **dual-objective comparison** — tractor error
-versus implement edge error as competing optimisation targets — combined with
+The intended contribution is the **dual-objective comparison**, tractor error
+versus implement edge error as competing optimisation targets, combined with
 a real equipment catalog so results are grounded in actual machines. Any
 novelty claim in documentation should first be checked against the literature
 on *implement-referenced control* and *implement steering systems*, the
