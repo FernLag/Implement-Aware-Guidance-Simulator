@@ -45,28 +45,3 @@ class SimulationRequest(BaseModel):
         if not all(c.isalnum() or c in "_-." for c in value):
             raise ValueError("identifier may contain only letters, digits, _ - and .")
         return value
-
-
-class ContactRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-    name: str = Field(min_length=1, max_length=120)
-    email: str = Field(min_length=3, max_length=254)
-    message: str = Field(min_length=10, max_length=4000)
-    # Honeypot. Real people never see this field, so anything in it is a bot.
-    website: str = Field(default="", max_length=200)
-
-    @field_validator("email")
-    @classmethod
-    def email_shape(cls, value: str) -> str:
-        local, _, domain = value.partition("@")
-        if not local or not domain or "." not in domain or " " in value:
-            raise ValueError("enter a valid email address")
-        return value
-
-    @field_validator("name", "message")
-    @classmethod
-    def no_control_characters(cls, value: str) -> str:
-        if any(ord(c) < 32 and c not in "\n\r\t" for c in value):
-            raise ValueError("control characters are not allowed")
-        return value

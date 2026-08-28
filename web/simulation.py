@@ -30,6 +30,8 @@ from aggsim.geometry import ABLine
 from aggsim.model import State, from_tractor, implement_from_catalog
 from aggsim.sim import SimConfig, simulate
 
+from .machine_geometry import machine_geometry
+
 LINE = ABLine((0.0, 0.0), (1.0, 0.0))
 MAX_POINTS = 600
 BASE_DT = 0.01
@@ -172,6 +174,8 @@ def run_simulation(req, max_steps: int) -> dict:
         "cross_track": _downsample(log.cross_track, step),
         "delta_cmd": _downsample(np.degrees(log.delta_cmd), step),
         "delta": _downsample(np.degrees(log.delta), step),
+        "theta": _downsample(log.theta, step),
+        "delta_rad": _downsample(log.delta, step),
     }
 
     summary = {
@@ -186,6 +190,7 @@ def run_simulation(req, max_steps: int) -> dict:
     if geometry is not None:
         series["implement_cross_track"] = _downsample(log.implement_cross_track, step)
         series["worst_edge"] = _downsample(log.worst_edge, step)
+        series["theta_implement"] = _downsample(log.theta_implement, step)
         coverage = coverage_between_passes(log, log, geometry.working_width)
         summary.update({
             "final_worst_edge": round(float(log.worst_edge[-1]), 5),
@@ -206,4 +211,10 @@ def run_simulation(req, max_steps: int) -> dict:
         },
         "series": series,
         "summary": summary,
+        "scene": {
+            "machine": machine_geometry(tractor, implement, geometry),
+            "slope_deg": req.slope_deg,
+            "slope_sign": req.slope_sign,
+            "speed": req.speed,
+        },
     }

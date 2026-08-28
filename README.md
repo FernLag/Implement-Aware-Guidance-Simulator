@@ -193,6 +193,20 @@ edge error on the same axes. Results include skip between adjacent passes as a
 percentage of working width, so the output carries an agronomic unit and not
 only a control one.
 
+A **3D view** plays the pass back with the machine on tilted ground, the hitch
+articulating, and the worked swath painted behind it, which makes the implement
+lag visible in a way a line chart does not. It is drawn by a small hand written
+projection renderer, no library, because the content security policy forbids
+loading one and the geometry is boxes and prisms.
+
+Wheel diameters in that view are **derived from the catalogued tyre codes**,
+so a `480/80R50` rolls at its real 2.04 m. Track width, body size and hitch
+geometry are not published by any manufacturer in the catalog, are drawn to
+plausible proportions, and are labelled as drawing only beneath the view. None
+of them touch the simulation. The model underneath stays planar: there is no
+roll, pitch or suspension, so the view shows a planar result in three
+dimensions rather than adding physics to it.
+
 ### Hosting it for free
 
 `render.yaml` deploys it to Render's free tier, which requires no payment

@@ -1,0 +1,144 @@
+"""Tests for the 3D view: derived dimensions, payload shape and wiring.
+
+The renderer itself needs a browser, but the things most likely to break
+silently do not: a tyre code parsed wrongly, a pose channel missing from the
+response, or a script reaching for an element id that no template contains.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+from web.machine_geometry import machine_geometry, parse_tyre
+from web.schemas import SimulationRequest
+from web.simulation import run_simulation
+
+REPO = Path(__file__).resolve().parent.parent
+
+
+# --- tyre codes are real data ---------------------------------------------
+
+@pytest.mark.parametrize("code,diameter", [
+    ("480/80R50", 2.038),   # 50 in rim + 2 x 480 mm x 0.80
+    ("800/70R38", 2.085),
+    ("420/85R34", 1.578),
+    ("650/65R42", 1.912),
+    ("200/70R16", 0.686),
+])
+def test_metric_tyre_diameter(code, diameter):
+    tyre = parse_tyre(code)
+    assert tyre.diameter == pytest.approx(diameter, abs=0.002)
+    assert tyre.assumed_aspect is False
+
+
+@pytest.mark.parametrize("code", ["18.4R34", "16.9-28", "11.00-20", "7.5-18"])
+def test_imperial_tyres_flag_their_assumed_aspect(code):
+    """Imperial codes carry no aspect ratio, so one is assumed and marked."""
+    tyre = parse_tyre(code)
+    assert tyre is not None
+    assert tyre.assumed_aspect is True
+    assert 0.6 < tyre.diameter < 2.2
+
+
+@pytest.mark.parametrize("code", [None, "", "not-a-tyre", "480/80", "R50"])
+def test_unparseable_codes_return_none_rather_than_guessing(code):
+    assert parse_tyre(code) is None
+
+
+def test_larger_tractors_get_larger_wheels():
+    from aggsim.catalog import load_catalog
+    catalog = load_catalog()
+    small = machine_geometry(catalog.tractor("jd_5075e"), None, None)
+    large = machine_geometry(catalog.tractor("jd_8r_410"), None, None)
+    assert large["rear_wheel"]["diameter"] > small["rear_wheel"]["diameter"]
+    assert large["wheelbase"]["value"] > small["wheelbase"]["value"]
+
+
+# --- payload ---------------------------------------------------------------
+
+def test_scene_payload_carries_the_poses_the_renderer_needs():
+    out = run_simulation(SimulationRequest(
+        tractor="jd_6145r", implement="jd_1775nt_16row30",
+        slope_deg=10.0, duration=20.0), 40000)
+    series = out["series"]
+    for channel in ("x", "y", "theta", "delta_rad", "theta_implement"):
+        assert channel in series, channel
+        assert len(series[channel]) == len(series["t"])
+
+    scene = out["scene"]
+    assert scene["slope_deg"] == 10.0
+    machine = scene["machine"]
+    assert machine["implement"]["type"] == "trailed"
+    assert machine["implement"]["working_width"]["sourced"] is True
+
+
+def test_scene_payload_without_an_implement():
+    out = run_simulation(SimulationRequest(tractor="jd_6145r", duration=20.0), 40000)
+    assert out["scene"]["machine"]["implement"] is None
+    assert "theta_implement" not in out["series"]
+
+
+def test_drawing_only_dimensions_are_marked_as_such():
+    """A dimension invented for the picture must not read as a specification."""
+    from aggsim.catalog import load_catalog
+    catalog = load_catalog()
+    machine = machine_geometry(catalog.tractor("jd_8r_410"), None, None)
+
+    assert machine["wheelbase"]["sourced"] is True
+    assert machine["rear_wheel"]["sourced"] is True
+    assert machine["track_width"]["sourced"] is False
+    assert machine["body"]["sourced"] is False
+    for name in ("track_width", "body", "hitch_distance", "implement_wheelbase"):
+        assert name in machine["drawing_only"]
+
+
+# --- wiring ----------------------------------------------------------------
+
+def _template_text() -> str:
+    return "\n".join(p.read_text() for p in (REPO / "web" / "templates").glob("*.html"))
+
+
+def test_every_element_id_the_scripts_reach_for_exists():
+    """Catches a typo in an id, which would otherwise fail only in a browser."""
+    templates = _template_text()
+    for script in ["app.js", "scene3d.js"]:
+        source = (REPO / "web" / "static" / "js" / script).read_text()
+        for element_id in set(re.findall(r'getElementById\("([^"]+)"\)', source)):
+            assert f'id="{element_id}"' in templates, f"{script} wants #{element_id}"
+
+
+def test_scene_script_declares_the_global_the_app_uses():
+    scene = (REPO / "web" / "static" / "js" / "scene3d.js").read_text()
+    app = (REPO / "web" / "static" / "js" / "app.js").read_text()
+    assert "window.GuidanceScene" in scene
+    assert "window.GuidanceScene" in app
+
+
+def test_scene_script_is_served_before_the_app_script():
+    base = (REPO / "web" / "templates" / "base.html").read_text()
+    assert base.index("scene3d.js") < base.index("js/app.js")
+
+
+def test_no_third_party_library_is_loaded():
+    """The content security policy forbids it, and nothing here needs one."""
+    for script in (REPO / "web" / "static" / "js").glob("*.js"):
+        text = script.read_text()
+        assert "http://" not in text and "https://" not in text
+        for lib in ("three.min", "THREE.", "babylon", "import(", "importScripts"):
+            assert lib not in text, f"{script.name} pulls in {lib}"
+
+
+def test_playback_respects_reduced_motion():
+    app = (REPO / "web" / "static" / "js" / "app.js").read_text()
+    assert "prefers-reduced-motion" in app
+    assert "setPlaying(!reduceMotion)" in app
+
+
+def test_canvas_has_a_text_alternative_that_updates():
+    templates = _template_text()
+    assert 'id="scene"' in templates and 'role="img"' in templates
+    app = (REPO / "web" / "static" / "js" / "app.js").read_text()
+    assert 'setAttribute("aria-label"' in app

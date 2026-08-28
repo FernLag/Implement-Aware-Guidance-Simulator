@@ -19,7 +19,7 @@ from web.app import create_app
 from web.config import load_settings
 
 REPO = Path(__file__).resolve().parent.parent
-PAGES = ["/", "/catalog", "/method", "/contact", "/privacy", "/terms", "/thank-you"]
+PAGES = ["/", "/catalog", "/method", "/privacy", "/terms"]
 
 
 @pytest.fixture(scope="module")
@@ -113,12 +113,6 @@ def test_pages_have_landmarks_and_a_skip_link(client):
     for needle in ["skip-link", "<main", "<header", "<footer", "<nav", 'lang="en"']:
         assert needle in html
 
-
-def test_form_inputs_are_labelled(client):
-    html = client.get("/contact").get_data(as_text=True)
-    for field in ["name", "email", "message"]:
-        assert f'for="{field}"' in html
-        assert f'id="{field}"' in html
 
 
 def test_viewport_meta_present_for_mobile(client):
@@ -260,70 +254,6 @@ def test_static_assets_are_not_rate_limited():
     assert 429 not in codes
 
 
-# --- contact form ----------------------------------------------------------
-
-def _csrf(client):
-    html = client.get("/contact").get_data(as_text=True)
-    return re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
-
-
-def test_contact_requires_csrf_token(client):
-    r = client.post("/contact", data={"name": "A", "email": "a@b.co",
-                                      "message": "hello there friend"})
-    assert r.status_code == 400
-    assert "session expired" in r.get_data(as_text=True).lower()
-
-
-def test_contact_shows_field_errors(client):
-    token = _csrf(client)
-    r = client.post("/contact", data={"csrf_token": token, "name": "",
-                                      "email": "not-an-email", "message": "short"})
-    assert r.status_code == 400
-    body = r.get_data(as_text=True)
-    assert 'id="email-error"' in body and "valid email" in body
-    assert 'aria-invalid="true"' in body
-
-
-def test_contact_preserves_what_was_typed_on_error(client):
-    token = _csrf(client)
-    r = client.post("/contact", data={"csrf_token": token, "name": "Ada Lovelace",
-                                      "email": "bad", "message": "a valid length message"})
-    assert "Ada Lovelace" in r.get_data(as_text=True)
-
-
-def test_contact_success_redirects_to_thank_you(client, tmp_path, app):
-    app.config["MESSAGE_STORE"] = str(tmp_path / "messages.jsonl")
-    token = _csrf(client)
-    r = client.post("/contact", data={"csrf_token": token, "name": "Ada",
-                                      "email": "ada@example.org",
-                                      "message": "A question about hitch geometry."})
-    assert r.status_code == 302
-    assert r.headers["Location"].endswith("/thank-you")
-    stored = (tmp_path / "messages.jsonl").read_text()
-    assert "ada@example.org" in stored
-
-
-def test_honeypot_submission_is_accepted_but_not_stored(client, tmp_path, app):
-    app.config["MESSAGE_STORE"] = str(tmp_path / "messages.jsonl")
-    token = _csrf(client)
-    r = client.post("/contact", data={"csrf_token": token, "name": "Bot",
-                                      "email": "bot@example.org",
-                                      "message": "buy things from me please",
-                                      "website": "http://spam.example"})
-    assert r.status_code == 302
-    assert not (tmp_path / "messages.jsonl").exists()
-
-
-def test_submitted_content_is_escaped_not_executed(client):
-    token = _csrf(client)
-    r = client.post("/contact", data={"csrf_token": token,
-                                      "name": "<script>alert(1)</script>",
-                                      "email": "bad", "message": "x" * 20})
-    body = r.get_data(as_text=True)
-    assert "<script>alert(1)</script>" not in body
-    assert "&lt;script&gt;" in body
-
-
 # --- configuration hygiene -------------------------------------------------
 
 def test_no_secret_is_hardcoded_in_the_source():
@@ -368,9 +298,22 @@ def test_cookie_banner_appears_only_when_analytics_is_on():
     assert 'data-cookie="yes"' in html and 'data-cookie="no"' in html
 
 
-def test_session_cookie_flags_are_safe(app):
-    assert app.config["SESSION_COOKIE_HTTPONLY"] is True
-    assert app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
+def test_the_site_sets_no_cookies_at_all(client):
+    """With no forms there is no CSRF token, so there is no session either."""
+    for path in PAGES:
+        response = client.get(path)
+        assert "Set-Cookie" not in response.headers, f"{path} set a cookie"
+
+
+def test_contact_routes_are_gone(client):
+    for path in ["/contact", "/thank-you"]:
+        assert client.get(path).status_code == 404
+
+
+def test_sitemap_and_robots_do_not_reference_removed_pages(client):
+    body = client.get("/sitemap.xml").get_data(as_text=True)
+    assert "/contact" not in body and "/thank-you" not in body
+    assert "thank-you" not in client.get("/robots.txt").get_data(as_text=True)
 
 
 # --- deployment portability ------------------------------------------------
@@ -419,33 +362,6 @@ def test_deployment_configs_reference_files_that_exist():
     assert "gunicorn" in render and "generateValue: true" in render
 
 
-def test_message_store_declines_rather_than_losing_messages(tmp_path, monkeypatch):
-    """An unwritable path must disable the form, not silently drop messages."""
-    monkeypatch.setenv("AGGSIM_MESSAGE_STORE", "/proc/definitely/not/writable.jsonl")
-    settings = load_settings()
-    assert settings.message_store_writable is False
-    assert settings.accepts_messages is False
-
-    app = create_app(replace(settings, secret_key="k", secret_key_is_ephemeral=False,
-                             rate_limit_per_minute=6000, rate_limit_burst=500))
-    client = app.test_client()
-    html = client.get("/contact").get_data(as_text=True)
-    assert "no writable place to store messages" in html
-    assert "disabled" in html
-
-    token = re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
-    r = client.post("/contact", data={"csrf_token": token, "name": "Ada",
-                                      "email": "ada@example.org",
-                                      "message": "a message that must not vanish"})
-    assert r.status_code == 503
-
-
-def test_message_store_honours_an_explicit_path(tmp_path, monkeypatch):
-    target = tmp_path / "nested" / "messages.jsonl"
-    monkeypatch.setenv("AGGSIM_MESSAGE_STORE", str(target))
-    settings = load_settings()
-    assert settings.message_store_writable is True
-    assert settings.message_store == target
 
 
 def test_render_blueprint_declares_only_free_resources():
@@ -475,27 +391,3 @@ def test_render_blueprint_runs_a_single_worker():
     assert "-w 1" in blueprint["services"][0]["startCommand"]
 
 
-def test_ephemeral_storage_is_disclosed_not_hidden(monkeypatch):
-    """Writable is not durable. A visitor is told which one this is."""
-    monkeypatch.setenv("AGGSIM_STORAGE_EPHEMERAL", "true")
-    settings = load_settings()
-    assert settings.accepts_messages is True
-    assert settings.messages_are_durable is False
-
-    app = create_app(replace(settings, secret_key="k", secret_key_is_ephemeral=False,
-                             rate_limit_per_minute=6000, rate_limit_burst=500))
-    html = app.test_client().get("/contact").get_data(as_text=True)
-    assert "temporary disk" in html
-    assert "lost after that" in html
-
-
-def test_durable_storage_shows_no_warning(monkeypatch, tmp_path):
-    monkeypatch.setenv("AGGSIM_STORAGE_EPHEMERAL", "false")
-    monkeypatch.setenv("AGGSIM_MESSAGE_STORE", str(tmp_path / "m.jsonl"))
-    settings = load_settings()
-    assert settings.messages_are_durable is True
-
-    app = create_app(replace(settings, secret_key="k", secret_key_is_ephemeral=False,
-                             rate_limit_per_minute=6000, rate_limit_burst=500))
-    html = app.test_client().get("/contact").get_data(as_text=True)
-    assert "temporary disk" not in html

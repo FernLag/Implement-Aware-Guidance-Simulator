@@ -17,11 +17,10 @@
     advertising cookie is set. There is no consent banner because there is
     nothing to consent to.</p>
     {% endif %}
-    <p>One cookie is used when you submit the contact form. It holds a signed
-    session value whose only purpose is to carry the token that proves the form
-    was submitted from this site and not from another. It is strictly necessary
-    for that security function, contains no identifier for you, and is not used
-    for measurement or advertising.</p>
+    <p>There is no session cookie either. The site has no forms and no
+    accounts, so there is nothing to keep track of between one page and the
+    next. You can confirm this in your browser's developer tools: the storage
+    panel for this site is empty.</p>
 
     <h2>The simulator</h2>
     <p>Running a pass sends your chosen settings to the server, which computes
@@ -36,12 +35,6 @@
     record addresses and requested pages according to how the operator has
     configured the hosting.</p>
 
-    <h2>The contact form</h2>
-    <p>If you use the contact form, the name, email address and message you type
-    are written to a file on the server so the operator can read and reply. They
-    are not sold, shared with advertisers, or used for any other purpose. Ask
-    the operator to delete them at any time.</p>
-
     <h2>Third parties</h2>
     {% if settings.analytics_enabled and settings.analytics_script_url %}
     <p>This deployment loads an analytics script from
@@ -55,8 +48,10 @@
     <h2>Your rights</h2>
     <p>Where data protection law such as the UK GDPR or the EU GDPR applies, you
     have the right to ask what is held about you, to have it corrected or
-    erased, and to complain to your supervisory authority. Requests go to the
-    operator using the details in the footer.</p>
+    erased, and to complain to your supervisory authority. In practice this
+    site holds nothing about you beyond the transient rate limiting entry
+    described above. Requests go to the operator using the details in the
+    footer.</p>
 
     {% if not settings.contact_configured %}
     <p><strong>This deployment has no contact details configured</strong>, so

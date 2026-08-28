@@ -8,12 +8,9 @@ they are worth stating before the options:
 2. **The rate limiter holds state in memory.** It only means anything inside a
    single long lived process. Spread across serverless instances it still runs,
    but it stops being a control.
-3. **The contact form writes to disk.** On a read-only or ephemeral filesystem
-   that either fails or, worse, appears to succeed and loses the message.
-
-The application handles the third itself: at start up it probes whether it has
-somewhere durable to write, and if not the contact form is disabled with an
-explanation rather than accepting messages it will drop.
+3. **It stores nothing.** There is no database, no form and no session, so an
+   ephemeral or read-only filesystem costs nothing. This removes the usual
+   reason free tiers are awkward.
 
 ## The options, compared honestly
 
@@ -76,10 +73,8 @@ would each hold their own bucket and double the effective limit.
   roughly 30 to 60 seconds while it wakes. There is no way around this on the
   free plan, and pinging it to stay awake would burn the 750 hour allowance
   for no benefit.
-- The disk **does not survive a redeploy**. `render.yaml` sets
-  `AGGSIM_STORAGE_EPHEMERAL=true`, so the contact page states that messages are
-  kept only until the next restart, rather than accepting them silently and
-  losing them.
+- The disk **does not survive a redeploy**, which does not matter here because
+  nothing is written to it.
 
 ## Hugging Face Spaces, Cloud Run, Fly.io
 
@@ -100,11 +95,6 @@ the web path never imports.
 `vercel.json` and `api/index.py` are here, so `vercel deploy` works. Read this
 first, because three things behave differently:
 
-- **The filesystem is read only** apart from `/tmp`. Contact messages have
-  nowhere durable to go, so the form disables itself and says why. Setting
-  `AGGSIM_MESSAGE_STORE=/tmp/messages.jsonl` would re-enable it, and the
-  messages would then be lost whenever the instance recycles, which is why it
-  is not the default.
 - **The rate limiter cannot see other instances.** Each cold start begins with
   a full bucket, so a distributed client is barely limited at all. `api/index.py`
   tightens the numbers, but the honest answer is to put Vercel's own firewall

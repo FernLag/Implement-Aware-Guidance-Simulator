@@ -136,6 +136,35 @@
         </div>
 
         <div id="results" hidden>
+          <figure class="chart-card view3d">
+            <figcaption id="scene-caption">The machine on the ground</figcaption>
+            <canvas id="scene" class="scene-canvas" role="img"
+                    aria-labelledby="scene-caption" aria-describedby="scene-alt"></canvas>
+            <p class="visually-hidden" id="scene-alt" aria-live="off"></p>
+
+            <div class="scene-controls">
+              <button type="button" class="btn btn-quiet btn-sm" id="scene-play"
+                      aria-pressed="false">Play</button>
+              <label class="scene-scrub">
+                <span class="visually-hidden">Position in the pass</span>
+                <input type="range" id="scene-time" min="0" max="100" value="0" step="1">
+              </label>
+              <span class="scene-clock" id="scene-clock" role="status" aria-live="polite">0.0 s</span>
+            </div>
+
+            <div class="scene-views" role="group" aria-label="Camera position">
+              <button type="button" class="btn btn-quiet btn-sm" data-view="chase" aria-pressed="true">Behind</button>
+              <button type="button" class="btn btn-quiet btn-sm" data-view="side" aria-pressed="false">Side</button>
+              <button type="button" class="btn btn-quiet btn-sm" data-view="top" aria-pressed="false">Above</button>
+            </div>
+
+            <p class="chart-summary">Drag to orbit, scroll to zoom. The ground is
+            tilted by the side slope you set. The shaded band is the ground the
+            implement has worked, so where it wanders away from the dashed
+            guidance line is where skip and overlap come from.</p>
+            <p class="scene-caveat" id="scene-caveat"></p>
+          </figure>
+
           <figure class="chart-card">
             <figcaption id="chart-caption">Cross-track error against time</figcaption>
             <div class="chart-holder" id="chart" role="img" aria-labelledby="chart-caption" aria-describedby="chart-summary"></div>

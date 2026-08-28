@@ -52,7 +52,6 @@
         <li><a href="{{ url_for('index') }}" {% if page == 'index' %}aria-current="page"{% endif %}>Simulator</a></li>
         <li><a href="{{ url_for('catalog') }}" {% if page == 'catalog' %}aria-current="page"{% endif %}>Catalog</a></li>
         <li><a href="{{ url_for('method') }}" {% if page == 'method' %}aria-current="page"{% endif %}>Method</a></li>
-        <li><a href="{{ url_for('contact') }}" {% if page == 'contact' %}aria-current="page"{% endif %}>Contact</a></li>
       </ul>
     </nav>
   </div>
@@ -77,7 +76,6 @@
         <li><a href="{{ url_for('index') }}">Simulator</a></li>
         <li><a href="{{ url_for('catalog') }}">Equipment catalog</a></li>
         <li><a href="{{ url_for('method') }}">Method</a></li>
-        <li><a href="{{ url_for('contact') }}">Contact</a></li>
       </ul>
     </div>
 
@@ -131,6 +129,7 @@
 </div>
 {% endif %}
 
+<script src="{{ url_for('static', filename='js/scene3d.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
 {% block scripts %}{% endblock %}
 </body>

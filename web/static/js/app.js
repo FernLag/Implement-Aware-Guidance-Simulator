@@ -207,6 +207,7 @@
       lines.push({ key: "worst_edge", label: "Worst implement edge", colour: COLOURS.implement, dash: null });
     }
 
+    setupScene(data);
     drawChart(s, lines);
     drawLegend(lines);
     drawMetrics(data, m);
@@ -309,6 +310,133 @@
       return '<dl class="metric ' + c.cls + '"><dt>' + c.label + "</dt><dd>" + c.value +
         '<span class="metric-note">' + c.note + "</span></dd></dl>";
     }).join("");
+  }
+
+  /* ---------- 3D playback ---------- */
+
+  var scene = null, sceneData = null, frame = 0, playing = false, rafId = null;
+  var reduceMotion = window.matchMedia
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function setupScene(data) {
+    var canvas = document.getElementById("scene");
+    if (!canvas || !window.GuidanceScene) { return; }
+
+    sceneData = data;
+    frame = 0;
+    if (!scene) {
+      scene = window.GuidanceScene.create(canvas);
+      attachSceneControls(canvas);
+    }
+
+    var slider = document.getElementById("scene-time");
+    slider.max = String(data.series.t.length - 1);
+    slider.value = "0";
+
+    var g = data.scene.machine;
+    var caveat = "Wheel sizes come from the catalogued tyre codes, so they are the " +
+      "real rolling diameters. Track width, body size and hitch geometry are not " +
+      "published by any manufacturer here and are drawn to plausible proportions. " +
+      "None of them affect the numbers.";
+    if (g.rear_wheel.code) {
+      caveat = "Rear tyre " + g.rear_wheel.code + " gives a " +
+        g.rear_wheel.diameter.toFixed(2) + " m rolling diameter. " + caveat;
+    }
+    document.getElementById("scene-caveat").textContent = caveat;
+
+    drawFrame(0);
+    // Autoplay is motion the visitor did not ask for, so it waits when the
+    // system says to reduce motion.
+    setPlaying(!reduceMotion);
+  }
+
+  function drawFrame(i) {
+    if (!scene || !sceneData) { return; }
+    var s = sceneData.series;
+    frame = Math.max(0, Math.min(i, s.t.length - 1));
+    window.GuidanceScene.render(scene, sceneData, frame);
+
+    document.getElementById("scene-clock").textContent = fmt(s.t[frame], 1) + " s";
+    document.getElementById("scene-time").value = String(frame);
+
+    var alt = "At " + fmt(s.t[frame], 1) + " seconds the tractor is " +
+      fmt(s.cross_track[frame]) + " metres from the guidance line";
+    if (s.worst_edge) {
+      alt += " and the worst implement edge is " + fmt(s.worst_edge[frame]) + " metres out";
+    }
+    document.getElementById("scene-alt").textContent = alt + ".";
+    document.getElementById("scene").setAttribute("aria-label", alt + ".");
+  }
+
+  function setPlaying(on) {
+    playing = on;
+    var btn = document.getElementById("scene-play");
+    btn.textContent = on ? "Pause" : "Play";
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    if (on) { rafId = requestAnimationFrame(tick); }
+  }
+
+  var lastTime = 0;
+  function tick(now) {
+    if (!playing || !sceneData) { return; }
+    if (now - lastTime > 40) {
+      lastTime = now;
+      var next = frame + 1;
+      if (next >= sceneData.series.t.length) { next = 0; }
+      drawFrame(next);
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function attachSceneControls(canvas) {
+    document.getElementById("scene-play").addEventListener("click", function () {
+      setPlaying(!playing);
+    });
+
+    document.getElementById("scene-time").addEventListener("input", function (ev) {
+      setPlaying(false);
+      drawFrame(parseInt(ev.target.value, 10));
+    });
+
+    document.querySelectorAll("[data-view]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        document.querySelectorAll("[data-view]").forEach(function (b) {
+          b.setAttribute("aria-pressed", "false");
+        });
+        btn.setAttribute("aria-pressed", "true");
+        scene.mode = btn.getAttribute("data-view");
+        if (scene.mode === "chase") { scene.yaw = -0.72; scene.pitch = 0.42; scene.distance = 26; }
+        if (scene.mode === "side") { scene.yaw = 0; scene.pitch = 0.12; scene.distance = 30; }
+        if (scene.mode === "top") { scene.yaw = 0; scene.pitch = 1.45; scene.distance = 44; }
+        drawFrame(frame);
+      });
+    });
+
+    var dragging = false, lastX = 0, lastY = 0;
+    canvas.addEventListener("pointerdown", function (ev) {
+      dragging = true; lastX = ev.clientX; lastY = ev.clientY;
+      canvas.setPointerCapture(ev.pointerId);
+    });
+    canvas.addEventListener("pointermove", function (ev) {
+      if (!dragging) { return; }
+      scene.yaw += (ev.clientX - lastX) * 0.008;
+      scene.pitch = Math.max(0.05, Math.min(1.5, scene.pitch + (ev.clientY - lastY) * 0.006));
+      lastX = ev.clientX; lastY = ev.clientY;
+      scene.mode = "free";
+      drawFrame(frame);
+    });
+    canvas.addEventListener("pointerup", function (ev) {
+      dragging = false;
+      canvas.releasePointerCapture(ev.pointerId);
+    });
+    canvas.addEventListener("wheel", function (ev) {
+      ev.preventDefault();
+      scene.distance = Math.max(8, Math.min(90, scene.distance + ev.deltaY * 0.03));
+      drawFrame(frame);
+    }, { passive: false });
+
+    window.addEventListener("resize", function () { drawFrame(frame); });
   }
 
   function drawTable(s, lines) {

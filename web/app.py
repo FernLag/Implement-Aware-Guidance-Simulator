@@ -6,20 +6,14 @@ Route handlers stay thin. Validation lives in `schemas`, limits and headers in
 
 from __future__ import annotations
 
-import hmac
-import json
 import logging
-import secrets
 from datetime import datetime, timezone
-from pathlib import Path
 
-from flask import (
-    Flask, abort, jsonify, redirect, render_template, request, session, url_for,
-)
+from flask import Flask, jsonify, render_template, request, url_for
 from pydantic import ValidationError
 
 from .config import Settings, load_settings
-from .schemas import ContactRequest, SimulationRequest
+from .schemas import SimulationRequest
 from .security import (
     RateLimiter, apply_security_headers, build_csp, too_many_requests,
 )
@@ -31,26 +25,9 @@ PAGES = {
     "index": ("Run a guidance pass", "Simulate how a tractor and its implement track a straight AB line, and see where the two disagree."),
     "catalog": ("Equipment catalog", "Eighteen tractors and twenty one implements, every parameter either traceable to a published source or flagged as an assumption."),
     "method": ("How the model works", "The kinematic bicycle model, pure pursuit and Stanley control, side slope drift, and the implement edge metric, with the closed forms each was checked against."),
-    "contact": ("Contact", "Ask a question about the model, the equipment catalog, or the results."),
-    "thank_you": ("Message received", "Your message has been stored on the server for the operator to read, along with your name and email address so they can reply."),
-    "privacy": ("Privacy", "What this site stores, what it does not, and the one cookie it needs to work."),
+    "privacy": ("Privacy", "What this site stores, what it does not, and why it sets no cookies at all."),
     "terms": ("Terms of use", "The terms covering use of this simulator and the limits of what its results mean."),
 }
-
-
-def _csrf_token() -> str:
-    token = session.get("csrf")
-    if not token:
-        token = secrets.token_urlsafe(32)
-        session["csrf"] = token
-    return token
-
-
-def _csrf_ok(submitted: str | None) -> bool:
-    expected = session.get("csrf")
-    if not expected or not submitted:
-        return False
-    return hmac.compare_digest(expected, submitted)
 
 
 def create_app(settings: Settings | None = None) -> Flask:
@@ -59,21 +36,12 @@ def create_app(settings: Settings | None = None) -> Flask:
     app.config.update(
         SECRET_KEY=settings.secret_key,
         MAX_CONTENT_LENGTH=settings.max_content_length,
-        SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SAMESITE="Lax",
-        SESSION_COOKIE_SECURE=settings.site_origin.startswith("https://"),
         JSON_SORT_KEYS=False,
         TRAP_HTTP_EXCEPTIONS=False,
     )
     app.settings = settings
     limiter = RateLimiter(settings.rate_limit_per_minute, settings.rate_limit_burst)
     app.limiter = limiter
-
-    if settings.secret_key_is_ephemeral:
-        log.warning(
-            "AGGSIM_SECRET_KEY is not set. Using a random key for this process; "
-            "sessions will not survive a restart. Set it before deploying."
-        )
 
     # ---- cross cutting ---------------------------------------------------
 
@@ -114,7 +82,6 @@ def create_app(settings: Settings | None = None) -> Flask:
             "settings": settings,
             "canonical": settings.site_origin + request.path,
             "og_image": settings.site_origin + url_for("static", filename="img/og-image.png"),
-            "csrf_token": _csrf_token(),
             "year": datetime.now(timezone.utc).year,
         }
         base.update(extra)
@@ -135,76 +102,6 @@ def create_app(settings: Settings | None = None) -> Flask:
     @app.get("/method")
     def method():
         return render_template("method.html", **_ctx("method"))
-
-    @app.get("/contact")
-    def contact():
-        return render_template("contact.html", errors={}, values={}, **_ctx("contact"))
-
-    @app.post("/contact")
-    def contact_submit():
-        form = request.form
-        if not _csrf_ok(form.get("csrf_token")):
-            return render_template(
-                "contact.html",
-                errors={"_form": "Your session expired. Please submit the form again."},
-                values={k: form.get(k, "") for k in ("name", "email", "message")},
-                **_ctx("contact"),
-            ), 400
-
-        try:
-            payload = ContactRequest(
-                name=form.get("name", ""), email=form.get("email", ""),
-                message=form.get("message", ""), website=form.get("website", ""),
-            )
-        except ValidationError as exc:
-            errors = {}
-            for err in exc.errors():
-                field = err["loc"][0] if err["loc"] else "_form"
-                errors.setdefault(str(field), err["msg"].replace("Value error, ", ""))
-            return render_template(
-                "contact.html", errors=errors,
-                values={k: form.get(k, "") for k in ("name", "email", "message")},
-                **_ctx("contact"),
-            ), 400
-
-        if payload.website:
-            # Honeypot filled. Accept silently so the bot learns nothing.
-            return redirect(url_for("thank_you"))
-
-        if not settings.accepts_messages:
-            # Said before the work, not after: the form is disabled in the
-            # template too, so this is the belt to that pair of braces.
-            return render_template(
-                "contact.html",
-                errors={"_form": "This deployment has nowhere to store messages, "
-                                 "so the form cannot accept them. Nothing was sent."},
-                values={k: form.get(k, "") for k in ("name", "email", "message")},
-                **_ctx("contact"),
-            ), 503
-
-        record = {
-            "at": datetime.now(timezone.utc).isoformat(),
-            "name": payload.name, "email": payload.email, "message": payload.message,
-        }
-        try:
-            path = Path(app.config.get("MESSAGE_STORE") or settings.message_store)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps(record) + "\n")
-        except OSError:
-            log.exception("could not store contact message")
-            return render_template(
-                "contact.html",
-                errors={"_form": "The message could not be stored. Please try again later."},
-                values={k: form.get(k, "") for k in ("name", "email", "message")},
-                **_ctx("contact"),
-            ), 500
-
-        return redirect(url_for("thank_you"))
-
-    @app.get("/thank-you")
-    def thank_you():
-        return render_template("thank_you.html", **_ctx("thank_you"))
 
     @app.get("/privacy")
     def privacy():
@@ -253,7 +150,6 @@ def create_app(settings: Settings | None = None) -> Flask:
             "User-agent: *",
             "Allow: /",
             "Disallow: /api/",
-            "Disallow: /thank-you",
             "",
             f"Sitemap: {settings.site_origin}/sitemap.xml",
             "",
@@ -263,7 +159,7 @@ def create_app(settings: Settings | None = None) -> Flask:
     @app.get("/sitemap.xml")
     def sitemap():
         paths = [("/", "1.0"), ("/catalog", "0.8"), ("/method", "0.8"),
-                 ("/contact", "0.5"), ("/privacy", "0.3"), ("/terms", "0.3")]
+                 ("/privacy", "0.3"), ("/terms", "0.3")]
         today = datetime.now(timezone.utc).date().isoformat()
         urls = "".join(
             f"<url><loc>{settings.site_origin}{p}</loc>"

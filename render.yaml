@@ -33,11 +33,6 @@ services:
         sync: false
       - key: PYTHON_VERSION
         value: "3.11.9"
-      # The free instance disk does not survive a redeploy. Declaring it here
-      # makes the contact page say so instead of accepting messages that are
-      # silently lost.
-      - key: AGGSIM_STORAGE_EPHEMERAL
-        value: "true"
       # One worker, so these are the real numbers with no doubling.
       - key: AGGSIM_RATE_LIMIT_PER_MINUTE
         value: "120"
