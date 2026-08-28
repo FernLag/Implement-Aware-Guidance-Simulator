@@ -1,0 +1,110 @@
+# ---- Claude / AI tooling ----
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+.claude/settings.local.json
+.mcp.json
+
+# ---- OS ----
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ---- Editors / IDEs ----
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+
+# ---- Environment / secrets ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets.json
+credentials.json
+
+# ---- Logs & temp ----
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig
+
+# ---- Node / JS ----
+node_modules/
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+.parcel-cache/
+coverage/
+.turbo/
+*.tsbuildinfo
+.eslintcache
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+*.egg-info/
+.eggs/
+htmlcov/
+.coverage
+.coverage.*
+.tox/
+
+# ---- Java / JVM ----
+target/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+.gradle/
+
+# ---- C/C++ / native ----
+*.o
+*.obj
+*.exe
+*.dll
+*.dylib
+*.a
+
+# ---- Data / models / simulation output ----
+*.sqlite
+*.sqlite3
+*.db
+results/
+outputs/
+checkpoints/
+*.ckpt
+*.h5
+*.pkl
