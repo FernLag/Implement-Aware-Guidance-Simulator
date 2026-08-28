@@ -184,23 +184,58 @@ def check_input_validation() -> None:
         record("FAIL", "Compute bounded", "no cap on simulation cost")
 
 
-def check_csrf_and_cookies() -> None:
+def check_state_and_cookies() -> None:
+    """Verify the app holds no browser state.
+
+    This used to check CSRF tokens and session cookie flags. The contact form
+    they protected has been removed, so the correct check is now the stronger
+    one: confirm there is no form, no session and no cookie, because a control
+    that is no longer needed is weaker evidence than an absent attack surface.
+    """
+    sys.path.insert(0, str(REPO))
+    from dataclasses import replace
+
+    from web.app import create_app
+    from web.config import load_settings
+
+    app = create_app(replace(load_settings(), secret_key="audit",
+                             secret_key_is_ephemeral=False,
+                             rate_limit_per_minute=6000, rate_limit_burst=500))
+
+    post_routes = sorted(
+        rule.rule for rule in app.url_map.iter_rules()
+        if "POST" in (rule.methods or set()) and not rule.rule.startswith("/api/")
+    )
+    if post_routes:
+        record("FAIL", "No HTML form endpoints",
+               f"{post_routes} accept POST without CSRF protection")
+    else:
+        record("PASS", "No HTML form endpoints",
+               "the only POST is the JSON API, so there is no form to forge")
+
+    client = app.test_client()
+    cookied = [p for p in ("/", "/catalog", "/method", "/privacy", "/terms")
+               if "Set-Cookie" in client.get(p).headers]
+    if cookied:
+        record("FAIL", "No cookies set", f"pages setting cookies: {cookied}")
+    else:
+        record("PASS", "No cookies set",
+               "no session, no CSRF token and no analytics by default, so "
+               "nothing is stored in the browser and consent has nothing to ask about")
+
     app_src = (REPO / "web" / "app.py").read_text()
-    checks = {
-        "CSRF token on the contact form": "_csrf_ok" in app_src,
-        "Constant time token comparison": "hmac.compare_digest" in app_src,
-        "HttpOnly session cookie": "SESSION_COOKIE_HTTPONLY=True" in app_src,
-        "SameSite session cookie": 'SESSION_COOKIE_SAMESITE="Lax"' in app_src,
-        "Secure cookie when served over TLS": "SESSION_COOKIE_SECURE" in app_src,
-    }
-    for name, ok in checks.items():
-        record("PASS" if ok else "FAIL", name, "present" if ok else "missing")
+    if "session" in app_src.split("import")[-1] and "flask import" in app_src and " session" in app_src:
+        record("WARN", "Session import still present",
+               "flask.session is referenced although no route uses it")
+    else:
+        record("PASS", "No server-side session use",
+               "flask.session is not imported or used anywhere in the app")
 
     record("WARN", "JSON API has no CSRF token",
            "/api/simulate is a POST but has no side effects: it computes and "
-           "returns a result, storing nothing. A cross origin JSON POST also "
-           "triggers a preflight that this server does not answer. Add a token "
-           "if the API ever gains state changing endpoints.")
+           "returns a result, storing nothing, and a cross origin JSON POST "
+           "triggers a preflight this server does not answer. Add a token if "
+           "the API ever gains state changing endpoints.")
 
 
 def check_debug_and_server() -> None:
@@ -213,11 +248,11 @@ def check_debug_and_server() -> None:
                "off by default, so tracebacks are never sent to a browser")
 
     if settings.secret_key_is_ephemeral:
-        record("WARN", "Session signing key",
-               "AGGSIM_SECRET_KEY is unset, so a random key is generated per "
-               "process. With more than one worker each has a different key and "
-               "contact form submissions will fail CSRF validation. Set it "
-               "before deploying.")
+        record("PASS", "Session signing key is unused",
+               "AGGSIM_SECRET_KEY is unset, which no longer matters: nothing "
+               "signs a cookie because nothing sets one. Set it anyway before "
+               "deploying, so that adding any future stateful feature does not "
+               "silently start with a per-process random key.")
     else:
         record("PASS", "Session signing key", "supplied from the environment")
 
@@ -229,11 +264,11 @@ def check_debug_and_server() -> None:
 
 
 def check_pii_handling() -> None:
-    record("WARN", "Contact messages are stored in clear text",
-           "Names, email addresses and message bodies are appended to "
-           "instance/messages.jsonl. That file is git ignored, but it is "
-           "personal data: restrict its permissions, back it up deliberately, "
-           "and delete entries once answered.")
+    record("PASS", "No personal data is collected",
+           "There is no contact form, no account and no session. Simulation "
+           "settings are numbers describing a machine and a field, not linked "
+           "to anyone. The only transient identifier is the network address "
+           "held in memory for rate limiting and discarded after 15 minutes.")
 
 
 def check_dependencies() -> None:
@@ -259,7 +294,7 @@ def main() -> int:
     check_headers_and_csp()
     check_rate_limiting()
     check_input_validation()
-    check_csrf_and_cookies()
+    check_state_and_cookies()
     check_debug_and_server()
     check_pii_handling()
     check_dependencies()

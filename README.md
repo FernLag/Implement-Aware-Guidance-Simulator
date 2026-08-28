@@ -22,7 +22,7 @@ is. Nearly all published path-tracking work optimises tractor error.
 git clone https://github.com/FernLag/Implement-Aware-Guidance-Simulator.git
 cd Implement-Aware-Guidance-Simulator
 python3 -m pip install -r requirements.txt
-python3 -m pytest tests/ -q          # 240 tests, ~85 s
+python3 -m pytest tests/ -q          # 249 tests, ~85 s
 ```
 
 Requires Python 3.11+. Dependencies are NumPy, Matplotlib, PyYAML and pytest.
@@ -224,7 +224,7 @@ AGGSIM_SECRET_KEY=$(python3 -c "import secrets;print(secrets.token_urlsafe(48))"
 ### Security posture
 
 ```bash
-python3 scripts/security_audit.py     # 17 checks, re-runnable
+python3 scripts/security_audit.py     # 21 checks, re-runnable
 ```
 
 Built in rather than added afterwards: every request field is bounded and
@@ -235,23 +235,26 @@ assets are exempt; the contact form carries a CSRF token compared in constant
 time; and the Content Security Policy is same origin with no `unsafe-inline`,
 which is possible because the page loads no external script, style or font.
 
+The site **sets no cookies at all**. With no form and no account there is no
+session to keep, so there is nothing to consent to and nothing stored in the
+browser. It also collects no personal data.
+
 No credential appears in this repository. Everything sensitive comes from the
-environment, and `.env` is git ignored. The audit reports six accepted
+environment, and `.env` is git ignored. The audit reports four accepted
 limitations rather than hiding them, the most important being that the rate
 limiter is per process and keys on the socket address, so a public deployment
 behind a proxy needs `ProxyFix` and an edge limiter.
 
 ### Two things this deployment does not invent
 
-**Contact details.** There is no address in the code. Unset, the contact page,
-privacy page and footer say so plainly instead of showing a placeholder that
-could be mistaken for real.
+**Contact details.** There is no address in the code. Unset, the footer says so
+plainly instead of showing a placeholder that could be mistaken for real.
 
 **A cookie banner with nothing behind it.** Analytics is off by default, and
-with it off the site sets no analytics cookie and shows no banner. Switch
-analytics on and a real yes or no choice appears, with nothing stored until it
-is answered. One strictly necessary session cookie carries the contact form
-CSRF token, and the privacy page documents it.
+with it off the site sets no cookie of any kind and shows no banner, because a
+consent prompt on a site that stores nothing teaches people to dismiss the
+question. Switch analytics on and a real yes or no choice appears, with nothing
+stored until it is answered.
 
 ---
 
@@ -326,7 +329,7 @@ aggsim/
     tuning.py       dual-objective gain search (Stage 6)
 scripts/          one demo script per stage, plus asset and audit tools
 web/              browser interface (Flask), separate from the simulation core
-tests/            240 tests
+tests/            249 tests
 ```
 
 ### Conventions
