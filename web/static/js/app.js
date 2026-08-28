@@ -406,6 +406,13 @@
 
     var g = data.scene.machine;
     var parts = [];
+    if (terrain) {
+      parts.push("Ground: USGS aerial photograph of the field you loaded.");
+    } else {
+      parts.push("Ground: plain soil. To put the real aerial photograph of a " +
+        "field under the machine, enter a location under Real field and press " +
+        "Read slope from this field.");
+    }
     if (g.rear_wheel.code) {
       parts.push("Rear tyre " + g.rear_wheel.code + " gives a " +
         g.rear_wheel.diameter.toFixed(2) + " m rolling diameter, and the wheelbase is " +
@@ -514,11 +521,16 @@
           return window.GuidanceTerrain.loadImagery(here.lat, here.lon, travel);
         })
         .then(function (patch) {
-          terrain = { patch: patch, map: window.GuidanceTerrain.mapper(patch, heading) };
           if (patch.tilesLoaded === 0) {
             terrain = null;
-            document.getElementById("field-note").textContent +=
-              " No imagery tiles were available, so the ground stays plain.";
+            note.textContent += " No aerial imagery was available for that " +
+              "location, so the ground stays plain. The slope figures above " +
+              "are still real.";
+          } else {
+            terrain = { patch: patch, map: window.GuidanceTerrain.mapper(patch, heading) };
+            note.textContent += " Aerial photograph loaded: " + patch.tilesLoaded +
+              " of " + patch.tilesRequested + " tiles covering about " +
+              Math.round(patch.extentM) + " m of ground.";
           }
           if (sceneData) { drawFrame(frame); }
         })

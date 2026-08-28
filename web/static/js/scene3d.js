@@ -39,7 +39,7 @@
     steel:     [108, 98, 82],
     imp:       [163, 90, 50],
     impDark:   [126, 68, 37],
-    tool:      [92, 84, 72],
+    tool:      [78, 72, 62],
     shadow:    [120, 108, 86]
   };
   var LIGHT = unit([0.38, -0.48, 0.79]);
@@ -171,7 +171,7 @@
   /* The aerial photograph, drawn before everything else because it is the
      ground plane and nothing can be under it. */
   Scene.prototype.drawGround = function (ctx, terrain, b, focal, w, h, cx, tilt) {
-    var step = 6, halfY = 30, back = 40, fwd = 70;
+    var step = 8, halfY = 56, back = 55, fwd = 120;
     var map = terrain.map, img = terrain.patch.canvas;
     var maxU = img.width, maxV = img.height;
 
@@ -330,92 +330,100 @@
 
   /* ---------------- the tractor ---------------- */
 
+  /* Laid out from the two things that are actually known: the wheelbase and
+     the wheel diameters. Everything is placed relative to the axles, because
+     that is how a tractor is arranged. An earlier version measured the bonnet
+     from its own length and pushed the grille more than a metre in front of
+     the front wheels. */
   function buildTractor(out, g, pose, tilt) {
     var o = [pose.x, pose.y], yaw = pose.theta;
     var L = g.wheelbase.value, track = g.track_width.value;
     var rw = g.rear_wheel, fw = g.front_wheel;
-    var b = g.body, pr = g.profile || {};
+    var pr = g.profile || {};
 
     var body = hex(g.livery.body);
     var trim = hex(g.livery.trim);
     var rim = hex(g.livery.wheel);
     var roof = hex(g.livery.roof);
-    var bonnetTop = mix(body, [255, 255, 255], 0.10);
-    var bodyLow = mix(body, [0, 0, 0], 0.28);
+    var bodyLit = mix(body, [255, 255, 255], 0.12);
+    var bodyLow = mix(body, [0, 0, 0], 0.30);
 
-    var axle = rw.diameter * 0.5;
-    var deck = axle * 0.9;
-    var bl = (pr.bonnet_len || 0.74) * L;
+    var rAxle = rw.diameter / 2, fAxle = fw.diameter / 2;
+    var deck = rAxle * 0.80;                    // top of the chassis rails
+    var hoodW = track * 0.54;
+    var hoodH = Math.max(0.62, rAxle * 0.78);
+    var cabW = track * 0.76;
+    var cabH = (pr.cab_height || 1.18) * rAxle * 1.35;
 
-    // Chassis spine.
-    box(out, o, yaw, tilt, L * 0.5, 0, deck * 0.5, L * 1.04, b.width * 0.32, deck * 0.32, trim);
+    // Chassis, from behind the rear axle to the front axle.
+    box(out, o, yaw, tilt, L * 0.42, 0, deck * 0.46, L * 1.30, track * 0.34,
+      deck * 0.42, trim);
 
-    // Bonnet in two segments so it has a shoulder rather than one flat slab.
-    box(out, o, yaw, tilt, L - bl * 0.32, 0, deck, bl * 0.62, b.width * 0.80,
-      b.height * 0.9, body, { taper: 0.9, drop: b.height * (pr.bonnet_drop || 0.28) * 0.4 });
-    box(out, o, yaw, tilt, L + bl * 0.16, 0, deck, bl * 0.5, b.width * 0.72,
-      b.height * 0.72, bonnetTop,
-      { taper: pr.bonnet_taper || 0.76, drop: b.height * (pr.bonnet_drop || 0.28) });
+    // Bonnet: from the front of the cab to the front axle, and no further.
+    var hoodBack = L * 0.50, hoodFront = L * 1.00;
+    var hoodLen = hoodFront - hoodBack;
+    box(out, o, yaw, tilt, (hoodBack + hoodFront) / 2, 0, deck, hoodLen, hoodW, hoodH,
+      body, { taper: pr.bonnet_taper || 0.78, drop: hoodH * (pr.bonnet_drop || 0.28) });
+    // Top panel, so the bonnet has a shoulder instead of one flat face.
+    box(out, o, yaw, tilt, (hoodBack + hoodFront) / 2 - hoodLen * 0.08, 0,
+      deck + hoodH * 0.86, hoodLen * 0.72, hoodW * 0.86, hoodH * 0.2, bodyLit);
 
-    // Grille and lamps.
-    box(out, o, yaw, tilt, L + bl * 0.42, 0, deck + b.height * 0.1, 0.09,
-      b.width * 0.5, b.height * 0.4, trim);
+    // Grille and lamps at the nose, level with the front axle.
+    box(out, o, yaw, tilt, hoodFront + 0.06, 0, deck + hoodH * 0.18, 0.1,
+      hoodW * 0.82, hoodH * 0.52, trim);
     [1, -1].forEach(function (side) {
-      box(out, o, yaw, tilt, L + bl * 0.4, side * b.width * 0.26, deck + b.height * 0.42,
-        0.1, 0.16, 0.12, [242, 236, 205]);
+      box(out, o, yaw, tilt, hoodFront + 0.04, side * hoodW * 0.3,
+        deck + hoodH * 0.7, 0.09, 0.16, 0.11, [244, 238, 208]);
     });
-
     if (pr.front_weights) {
-      box(out, o, yaw, tilt, L + bl * 0.56, 0, deck * 0.55, 0.3, b.width * 0.52,
-        b.height * 0.42, trim);
+      box(out, o, yaw, tilt, L * 1.16, 0, deck * 0.72, 0.32, hoodW * 0.9,
+        hoodH * 0.5, trim);
     }
 
-    // Cab.
-    var cabL = (pr.cab_len || 0.58) * L;
-    var cabW = b.width * 0.98;
-    var cabH = b.height * (pr.cab_height || 1.18);
-    var cabX = (pr.cab_pos || 0.04) * L;
-    var cabZ = deck + b.height * 0.1;
-    box(out, o, yaw, tilt, cabX, 0, cabZ, cabL, cabW, 0.1, bodyLow);
-    [[cabL / 2, cabW / 2], [cabL / 2, -cabW / 2], [-cabL / 2, cabW / 2], [-cabL / 2, -cabW / 2]]
-      .forEach(function (c) {
-        box(out, o, yaw, tilt, cabX + c[0], c[1], cabZ, 0.08, 0.08, cabH, trim);
-      });
-    function glassPanel(ax, ay, bx, by) {
+    // Cab, sitting between the axles and over the rear one.
+    var cabLen = L * 0.50, cabX = L * 0.22, cabZ = deck + hoodH * 0.16;
+    box(out, o, yaw, tilt, cabX, 0, cabZ, cabLen, cabW, 0.09, bodyLow);
+    [[cabLen / 2, cabW / 2], [cabLen / 2, -cabW / 2],
+     [-cabLen / 2, cabW / 2], [-cabLen / 2, -cabW / 2]].forEach(function (c) {
+      box(out, o, yaw, tilt, cabX + c[0], c[1], cabZ, 0.075, 0.075, cabH, trim);
+    });
+    function pane(ax, ay, bx, by) {
       quad(out,
-        place([ax, ay, cabZ + 0.1], o, yaw, tilt),
-        place([bx, by, cabZ + 0.1], o, yaw, tilt),
-        place([bx, by, cabZ + cabH * 0.96], o, yaw, tilt),
-        place([ax, ay, cabZ + cabH * 0.96], o, yaw, tilt), COL.glass, 0.92);
+        place([ax, ay, cabZ + 0.09], o, yaw, tilt),
+        place([bx, by, cabZ + 0.09], o, yaw, tilt),
+        place([bx, by, cabZ + cabH * 0.94], o, yaw, tilt),
+        place([ax, ay, cabZ + cabH * 0.94], o, yaw, tilt), COL.glass, 0.95);
     }
-    glassPanel(cabX + cabL / 2, cabW / 2, cabX + cabL / 2, -cabW / 2);
-    glassPanel(cabX - cabL / 2, -cabW / 2, cabX - cabL / 2, cabW / 2);
-    glassPanel(cabX - cabL / 2, cabW / 2, cabX + cabL / 2, cabW / 2);
-    glassPanel(cabX + cabL / 2, -cabW / 2, cabX - cabL / 2, -cabW / 2);
-    box(out, o, yaw, tilt, cabX, 0, cabZ + cabH * 0.96, cabL * 1.12, cabW * 1.14, 0.12, roof);
-    // Roof beacon.
-    box(out, o, yaw, tilt, cabX + cabL * 0.4, 0, cabZ + cabH * 0.96 + 0.12,
-      0.1, 0.1, 0.1, [214, 150, 40]);
+    pane(cabX + cabLen / 2, cabW / 2, cabX + cabLen / 2, -cabW / 2);
+    pane(cabX - cabLen / 2, -cabW / 2, cabX - cabLen / 2, cabW / 2);
+    pane(cabX - cabLen / 2, cabW / 2, cabX + cabLen / 2, cabW / 2);
+    pane(cabX + cabLen / 2, -cabW / 2, cabX - cabLen / 2, -cabW / 2);
+    box(out, o, yaw, tilt, cabX, 0, cabZ + cabH * 0.94, cabLen * 1.14, cabW * 1.16,
+      0.11, roof);
+    box(out, o, yaw, tilt, cabX + cabLen * 0.42, 0, cabZ + cabH * 0.94 + 0.11,
+      0.1, 0.1, 0.09, [216, 152, 42]);
 
+    // Exhaust up the right of the bonnet, against the cab pillar.
     if (pr.exhaust === "stack" || pr.exhaust === "stack_short") {
-      var eh = b.height * (pr.exhaust === "stack" ? 1.15 : 0.7);
-      box(out, o, yaw, tilt, L - bl * 0.1, cabW * 0.4, deck + b.height * 0.5,
-        0.11, 0.11, eh, trim);
+      var eh = cabH * (pr.exhaust === "stack" ? 0.82 : 0.5);
+      box(out, o, yaw, tilt, hoodBack + 0.12, hoodW * 0.46, deck + hoodH * 0.5,
+        0.1, 0.1, eh, trim);
     }
 
     if (pr.fenders !== false) {
       [1, -1].forEach(function (side) {
-        box(out, o, yaw, tilt, 0, side * (track / 2 - rw.width * 0.08), axle * 1.1,
-          rw.diameter * 0.95, rw.width * 1.3, 0.11, bodyLow);
+        box(out, o, yaw, tilt, 0, side * (track / 2 - rw.width * 0.06), rAxle * 1.06,
+          rw.diameter * 0.96, rw.width * 1.28, 0.1, bodyLow);
       });
     }
 
-    box(out, o, yaw, tilt, -L * 0.2, 0, deck * 0.4, L * 0.4, 0.13, 0.11, trim);
+    // Drawbar behind the rear axle.
+    box(out, o, yaw, tilt, -L * 0.20, 0, deck * 0.36, L * 0.40, 0.12, 0.1, trim);
 
-    wheel(out, o, yaw, tilt, 0, track / 2, rw.diameter / 2, rw.width, 0, true, rim);
-    wheel(out, o, yaw, tilt, 0, -track / 2, rw.diameter / 2, rw.width, 0, true, rim);
-    wheel(out, o, yaw, tilt, L, track / 2 * 0.9, fw.diameter / 2, fw.width, pose.delta, true, rim);
-    wheel(out, o, yaw, tilt, L, -track / 2 * 0.9, fw.diameter / 2, fw.width, pose.delta, true, rim);
+    wheel(out, o, yaw, tilt, 0, track / 2, rAxle, rw.width, 0, true, rim);
+    wheel(out, o, yaw, tilt, 0, -track / 2, rAxle, rw.width, 0, true, rim);
+    wheel(out, o, yaw, tilt, L, track / 2 * 0.88, fAxle, fw.width, pose.delta, true, rim);
+    wheel(out, o, yaw, tilt, L, -track / 2 * 0.88, fAxle, fw.width, pose.delta, true, rim);
   }
 
   /* A soft footprint on the ground. Without it the machine reads as floating,
@@ -458,17 +466,17 @@
     for (var i = 0; i < n; i++) {
       var y = -width / 2 + (i + 0.5) * (width / n);
       if (/planter/.test(kind)) {
-        box(out, o, yawI, tilt, -depth * 0.18, y, 0.28, depth * 0.5, 0.3, 0.5, COL.tool);
-        wheel(out, o, yawI, tilt, -depth * 0.42, y, 0.24, 0.08, 0, false);
+        // Row unit: a body hanging off the bar with an opener disc.
+        box(out, o, yawI, tilt, -depth * 0.22, y, 0.26, depth * 0.46, 0.26, 0.44, dark);
+        wheel(out, o, yawI, tilt, -depth * 0.44, y, 0.22, 0.06, 0, false, steel);
       } else if (/disk|disc|catros|joker|turbomax|excelerator/.test(kind)) {
-        wheel(out, o, yawI, tilt, depth * 0.2, y, 0.29, 0.05, 0.32, false);
-        wheel(out, o, yawI, tilt, -depth * 0.24, y, 0.29, 0.05, -0.32, false);
+        wheel(out, o, yawI, tilt, depth * 0.2, y, 0.28, 0.045, 0.32, false, steel);
+        wheel(out, o, yawI, tilt, -depth * 0.24, y, 0.28, 0.045, -0.32, false, steel);
       } else if (/laserweeder|verdant|sharpshooter/.test(kind)) {
-        box(out, o, yawI, tilt, 0, y, 0.78, depth * 0.62, width / n * 0.82, 0.36, COL.tool);
+        box(out, o, yawI, tilt, 0, y, 0.74, depth * 0.58, width / n * 0.78, 0.32, dark);
       } else {
-        // Tines, angled back and down.
-        box(out, o, yawI, tilt, -depth * 0.1, y, 0.12, 0.12, 0.1, 0.58, COL.tool);
-        box(out, o, yawI, tilt, -depth * 0.1, y, 0.06, 0.3, 0.14, 0.1, COL.steel);
+        box(out, o, yawI, tilt, -depth * 0.1, y, 0.14, 0.1, 0.09, 0.52, dark);
+        box(out, o, yawI, tilt, -depth * 0.14, y, 0.05, 0.26, 0.12, 0.1, steel);
       }
     }
 
@@ -487,16 +495,23 @@
   /* ---------------- ground ---------------- */
 
   function buildGround(out, cx, tilt, width, textured) {
-    var half = 30, x0 = Math.floor((cx - half * 0.55) / 5) * 5;
-    var x1 = x0 + half * 1.9;
+    var half = 60, x0 = Math.floor((cx - 50) / 5) * 5;
+    var x1 = x0 + 190;
     function g(x, y, z) { return place([x, y, z || 0], [0, 0], 0, tilt); }
 
+    // A large base plane first. Without it the drawn field simply stops and
+    // the page background shows through as a pale ridge along both sides,
+    // which reads as a valley rather than as the edge of the detail.
+    out.push({ p: [g(cx - 400, -400, -0.02), g(cx + 400, -400, -0.02),
+                   g(cx + 400, 400, -0.02), g(cx - 400, 400, -0.02)],
+               c: COL.soil, k: 0.9, cull: false });
+
     if (!textured) {
-      for (var gx = x0; gx < x1; gx += 5) {
-        for (var gy = -half; gy < half; gy += 5) {
+      for (var gx = x0; gx < x1; gx += 8) {
+        for (var gy = -half; gy < half; gy += 8) {
           var band = Math.abs(gy) < (width || 0) / 2 ? COL.soilDark : COL.soil;
-          out.push({ p: [g(gx, gy), g(gx + 5, gy), g(gx + 5, gy + 5), g(gx, gy + 5)],
-                     c: band, k: 0.97 + ((gx + gy) % 10 === 0 ? 0.03 : 0), cull: false });
+          out.push({ p: [g(gx, gy), g(gx + 8, gy), g(gx + 8, gy + 8), g(gx, gy + 8)],
+                     c: band, k: 0.97 + ((gx + gy) % 16 === 0 ? 0.03 : 0), cull: false });
         }
       }
       // Drill rows, for a sense of scale and direction of travel.
