@@ -23,6 +23,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from .appearance import livery_for, profile_for
+
 INCH = 0.0254
 
 # Imperial tyre codes give a section width but no aspect ratio. Pre-metric
@@ -82,7 +84,13 @@ def machine_geometry(tractor, implement, geometry) -> dict:
     # only affects how wide the machine looks.
     track = max(1.52, rear_d * 1.05)
 
+    profile_name, profile = profile_for(tractor)
+
     payload = {
+        "manufacturer": tractor.manufacturer,
+        "livery": livery_for(tractor.manufacturer),
+        "profile": profile,
+        "profile_name": profile_name,
         "wheelbase": {"value": round(wheelbase, 3), "sourced": not tractor.wheelbase.assumed},
         "track_width": {"value": round(track, 3), "sourced": False},
         "front_wheel": {
@@ -116,6 +124,7 @@ def machine_geometry(tractor, implement, geometry) -> dict:
             # units or laser modules. Appearance only.
             "draft_class": implement.draft_class or "",
             "manufacturer": implement.manufacturer,
+            "livery": livery_for(implement.manufacturer, implement=True),
             "working_width": {"value": round(geometry.working_width, 3),
                               "sourced": not implement.working_width.assumed},
             "hitch_distance": {"value": round(geometry.hitch_distance, 3), "sourced": False},

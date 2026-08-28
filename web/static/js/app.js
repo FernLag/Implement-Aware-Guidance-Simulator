@@ -334,15 +334,23 @@
     slider.value = "0";
 
     var g = data.scene.machine;
-    var caveat = "Wheel sizes come from the catalogued tyre codes, so they are the " +
-      "real rolling diameters. Track width, body size and hitch geometry are not " +
-      "published by any manufacturer here and are drawn to plausible proportions. " +
-      "None of them affect the numbers.";
+    var parts = [];
     if (g.rear_wheel.code) {
-      caveat = "Rear tyre " + g.rear_wheel.code + " gives a " +
-        g.rear_wheel.diameter.toFixed(2) + " m rolling diameter. " + caveat;
+      parts.push("Rear tyre " + g.rear_wheel.code + " gives a " +
+        g.rear_wheel.diameter.toFixed(2) + " m rolling diameter, and the wheelbase is " +
+        g.wheelbase.value.toFixed(2) + " m. Both are from the catalog.");
     }
-    document.getElementById("scene-caveat").textContent = caveat;
+    if (g.livery && g.livery.verified) {
+      parts.push("Livery is " + g.manufacturer + "'s published brand palette. " +
+        "A brand palette is the logo colour rather than a paint code, so it " +
+        "identifies the machine without being a paint match.");
+    } else if (g.livery) {
+      parts.push("Livery for " + g.manufacturer + " is recognisable rather than " +
+        "verified: no published palette was found, so the colour is not sourced.");
+    }
+    parts.push("Body proportions, track width and hitch geometry are published by " +
+      "nobody here and are drawn to plausible shape. None of them affect the numbers.");
+    document.getElementById("scene-caveat").textContent = parts.join(" ");
 
     drawFrame(0);
     // Autoplay is motion the visitor did not ask for, so it waits when the

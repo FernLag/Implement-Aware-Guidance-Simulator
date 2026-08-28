@@ -53,11 +53,29 @@
   }
   function unit(v) { var n = Math.sqrt(dot(v, v)) || 1; return mul(v, 1 / n); }
 
-  function shade(rgb, n, k) {
-    var l = 0.5 + 0.5 * Math.max(0, dot(n, LIGHT));
+  var SKY = [231, 220, 196];
+
+  function hex(h) {
+    if (!h) { return [110, 107, 100]; }
+    h = h.replace("#", "");
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16),
+            parseInt(h.slice(4, 6), 16)];
+  }
+
+  function mix(a, b, t) {
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  }
+
+  /* Lambert term, then a wash toward the background with distance. Without the
+     wash every surface reads at full strength however far away it is, which is
+     most of what made the first version look flat and toy-like. */
+  function shade(rgb, n, k, depth) {
+    var l = 0.46 + 0.54 * Math.max(0, dot(n, LIGHT));
     l *= (k === undefined ? 1 : k);
-    return "rgb(" + Math.round(rgb[0] * l) + "," + Math.round(rgb[1] * l) + "," +
-      Math.round(rgb[2] * l) + ")";
+    var c = [rgb[0] * l, rgb[1] * l, rgb[2] * l];
+    var fade = Math.min(0.5, Math.max(0, (depth - 12) / 150));
+    c = mix(c, SKY, fade);
+    return "rgb(" + Math.round(c[0]) + "," + Math.round(c[1]) + "," + Math.round(c[2]) + ")";
   }
 
   /* Machine coordinates into the world, then tilt the world by the slope. */
@@ -181,7 +199,7 @@
           ctx.fillStyle = f.flat;
         } else {
           var nn = unit(cross(sub(f.p[1], f.p[0]), sub(f.p[2], f.p[0])));
-          ctx.fillStyle = shade(f.c, nn, f.k);
+          ctx.fillStyle = shade(f.c, nn, f.k, d.depth);
         }
         ctx.fill();
       }
@@ -217,7 +235,7 @@
   }
 
   /* A wheel with tread lugs and a visible rim. */
-  function wheel(out, o, yaw, tilt, cx, cy, radius, width, steer, detail) {
+  function wheel(out, o, yaw, tilt, cx, cy, radius, width, steer, detail, rimCol) {
     var sides = detail ? 16 : 10, hw = width / 2;
     var c = Math.cos(steer || 0), s = Math.sin(steer || 0);
     function pt(ang, r, side) {
@@ -242,8 +260,8 @@
       face.push(pt((j / sides) * Math.PI * 2, rimR, 1.01));
       hubFace.push(pt((j / sides) * Math.PI * 2, rimR * 0.34, 1.02));
     }
-    out.push({ p: face, c: COL.rim, k: 1.0, cull: false });
-    out.push({ p: hubFace, c: COL.hub, k: 1.0, cull: false });
+    out.push({ p: face, c: rimCol || COL.rim, k: 1.0, cull: false });
+    out.push({ p: hubFace, c: mix(rimCol || COL.rim, [0, 0, 0], 0.35), k: 1.0, cull: false });
   }
 
   /* ---------------- the tractor ---------------- */
@@ -252,72 +270,107 @@
     var o = [pose.x, pose.y], yaw = pose.theta;
     var L = g.wheelbase.value, track = g.track_width.value;
     var rw = g.rear_wheel, fw = g.front_wheel;
-    var b = g.body;
+    var b = g.body, pr = g.profile || {};
+
+    var body = hex(g.livery.body);
+    var trim = hex(g.livery.trim);
+    var rim = hex(g.livery.wheel);
+    var roof = hex(g.livery.roof);
+    var bonnetTop = mix(body, [255, 255, 255], 0.10);
+    var bodyLow = mix(body, [0, 0, 0], 0.28);
+
     var axle = rw.diameter * 0.5;
-    var deck = axle * 0.92;
+    var deck = axle * 0.9;
+    var bl = (pr.bonnet_len || 0.74) * L;
 
-    // Chassis spine from rear axle to front axle.
-    box(out, o, yaw, tilt, L * 0.5, 0, deck * 0.55, L * 1.02, b.width * 0.34, deck * 0.34, COL.steel);
+    // Chassis spine.
+    box(out, o, yaw, tilt, L * 0.5, 0, deck * 0.5, L * 1.04, b.width * 0.32, deck * 0.32, trim);
 
-    // Bonnet, tapered and dropping towards the front.
-    box(out, o, yaw, tilt, L * 0.72, 0, deck, L * 0.78, b.width * 0.78, b.height * 0.86,
-      COL.hood, { taper: 0.74, drop: b.height * 0.3 });
-    // Grille.
-    box(out, o, yaw, tilt, L * 1.12, 0, deck + b.height * 0.12, 0.1, b.width * 0.56,
-      b.height * 0.44, COL.bodyDark);
-    // Front weight pack.
-    box(out, o, yaw, tilt, L * 1.22, 0, deck * 0.62, 0.34, b.width * 0.5, b.height * 0.44,
-      COL.steel);
+    // Bonnet in two segments so it has a shoulder rather than one flat slab.
+    box(out, o, yaw, tilt, L - bl * 0.32, 0, deck, bl * 0.62, b.width * 0.80,
+      b.height * 0.9, body, { taper: 0.9, drop: b.height * (pr.bonnet_drop || 0.28) * 0.4 });
+    box(out, o, yaw, tilt, L + bl * 0.16, 0, deck, bl * 0.5, b.width * 0.72,
+      b.height * 0.72, bonnetTop,
+      { taper: pr.bonnet_taper || 0.76, drop: b.height * (pr.bonnet_drop || 0.28) });
 
-    // Cab: floor, four posts, glass, roof.
-    var cabL = L * 0.62, cabW = b.width * 0.96, cabH = b.height * 1.24;
-    var cabX = L * 0.06, cabZ = deck + b.height * 0.12;
-    box(out, o, yaw, tilt, cabX, 0, cabZ, cabL, cabW, 0.1, COL.cab);
+    // Grille and lamps.
+    box(out, o, yaw, tilt, L + bl * 0.42, 0, deck + b.height * 0.1, 0.09,
+      b.width * 0.5, b.height * 0.4, trim);
+    [1, -1].forEach(function (side) {
+      box(out, o, yaw, tilt, L + bl * 0.4, side * b.width * 0.26, deck + b.height * 0.42,
+        0.1, 0.16, 0.12, [242, 236, 205]);
+    });
+
+    if (pr.front_weights) {
+      box(out, o, yaw, tilt, L + bl * 0.56, 0, deck * 0.55, 0.3, b.width * 0.52,
+        b.height * 0.42, trim);
+    }
+
+    // Cab.
+    var cabL = (pr.cab_len || 0.58) * L;
+    var cabW = b.width * 0.98;
+    var cabH = b.height * (pr.cab_height || 1.18);
+    var cabX = (pr.cab_pos || 0.04) * L;
+    var cabZ = deck + b.height * 0.1;
+    box(out, o, yaw, tilt, cabX, 0, cabZ, cabL, cabW, 0.1, bodyLow);
     [[cabL / 2, cabW / 2], [cabL / 2, -cabW / 2], [-cabL / 2, cabW / 2], [-cabL / 2, -cabW / 2]]
       .forEach(function (c) {
-        box(out, o, yaw, tilt, cabX + c[0], c[1], cabZ, 0.09, 0.09, cabH, COL.post);
+        box(out, o, yaw, tilt, cabX + c[0], c[1], cabZ, 0.08, 0.08, cabH, trim);
       });
-    quad(out,
-      place([cabX + cabL / 2, cabW / 2, cabZ + 0.1], o, yaw, tilt),
-      place([cabX + cabL / 2, -cabW / 2, cabZ + 0.1], o, yaw, tilt),
-      place([cabX + cabL / 2, -cabW / 2, cabZ + cabH], o, yaw, tilt),
-      place([cabX + cabL / 2, cabW / 2, cabZ + cabH], o, yaw, tilt), COL.glass, 0.9);
-    quad(out,
-      place([cabX - cabL / 2, -cabW / 2, cabZ + 0.1], o, yaw, tilt),
-      place([cabX - cabL / 2, cabW / 2, cabZ + 0.1], o, yaw, tilt),
-      place([cabX - cabL / 2, cabW / 2, cabZ + cabH], o, yaw, tilt),
-      place([cabX - cabL / 2, -cabW / 2, cabZ + cabH], o, yaw, tilt), COL.glass, 0.9);
-    [1, -1].forEach(function (side) {
+    function glassPanel(ax, ay, bx, by) {
       quad(out,
-        place([cabX - cabL / 2, side * cabW / 2, cabZ + 0.1], o, yaw, tilt),
-        place([cabX + cabL / 2, side * cabW / 2, cabZ + 0.1], o, yaw, tilt),
-        place([cabX + cabL / 2, side * cabW / 2, cabZ + cabH], o, yaw, tilt),
-        place([cabX - cabL / 2, side * cabW / 2, cabZ + cabH], o, yaw, tilt), COL.glass, 0.82);
-    });
-    box(out, o, yaw, tilt, cabX, 0, cabZ + cabH, cabL * 1.1, cabW * 1.12, 0.13, COL.roof);
+        place([ax, ay, cabZ + 0.1], o, yaw, tilt),
+        place([bx, by, cabZ + 0.1], o, yaw, tilt),
+        place([bx, by, cabZ + cabH * 0.96], o, yaw, tilt),
+        place([ax, ay, cabZ + cabH * 0.96], o, yaw, tilt), COL.glass, 0.92);
+    }
+    glassPanel(cabX + cabL / 2, cabW / 2, cabX + cabL / 2, -cabW / 2);
+    glassPanel(cabX - cabL / 2, -cabW / 2, cabX - cabL / 2, cabW / 2);
+    glassPanel(cabX - cabL / 2, cabW / 2, cabX + cabL / 2, cabW / 2);
+    glassPanel(cabX + cabL / 2, -cabW / 2, cabX - cabL / 2, -cabW / 2);
+    box(out, o, yaw, tilt, cabX, 0, cabZ + cabH * 0.96, cabL * 1.12, cabW * 1.14, 0.12, roof);
+    // Roof beacon.
+    box(out, o, yaw, tilt, cabX + cabL * 0.4, 0, cabZ + cabH * 0.96 + 0.12,
+      0.1, 0.1, 0.1, [214, 150, 40]);
 
-    // Exhaust stack up the right of the bonnet.
-    box(out, o, yaw, tilt, L * 0.52, cabW * 0.42, deck + b.height * 0.5, 0.12, 0.12,
-      b.height * 1.1, COL.steel);
+    if (pr.exhaust === "stack" || pr.exhaust === "stack_short") {
+      var eh = b.height * (pr.exhaust === "stack" ? 1.15 : 0.7);
+      box(out, o, yaw, tilt, L - bl * 0.1, cabW * 0.4, deck + b.height * 0.5,
+        0.11, 0.11, eh, trim);
+    }
 
-    // Fenders over the rear wheels.
-    [1, -1].forEach(function (side) {
-      box(out, o, yaw, tilt, 0, side * (track / 2 - rw.width * 0.1), axle * 1.12,
-        rw.diameter * 0.92, rw.width * 1.25, 0.12, COL.bodyDark);
-    });
+    if (pr.fenders !== false) {
+      [1, -1].forEach(function (side) {
+        box(out, o, yaw, tilt, 0, side * (track / 2 - rw.width * 0.08), axle * 1.1,
+          rw.diameter * 0.95, rw.width * 1.3, 0.11, bodyLow);
+      });
+    }
 
-    // Drawbar.
-    box(out, o, yaw, tilt, -L * 0.22, 0, deck * 0.42, L * 0.44, 0.14, 0.12, COL.steel);
+    box(out, o, yaw, tilt, -L * 0.2, 0, deck * 0.4, L * 0.4, 0.13, 0.11, trim);
 
-    wheel(out, o, yaw, tilt, 0, track / 2, rw.diameter / 2, rw.width, 0, true);
-    wheel(out, o, yaw, tilt, 0, -track / 2, rw.diameter / 2, rw.width, 0, true);
-    wheel(out, o, yaw, tilt, L, track / 2 * 0.9, fw.diameter / 2, fw.width, pose.delta, true);
-    wheel(out, o, yaw, tilt, L, -track / 2 * 0.9, fw.diameter / 2, fw.width, pose.delta, true);
+    wheel(out, o, yaw, tilt, 0, track / 2, rw.diameter / 2, rw.width, 0, true, rim);
+    wheel(out, o, yaw, tilt, 0, -track / 2, rw.diameter / 2, rw.width, 0, true, rim);
+    wheel(out, o, yaw, tilt, L, track / 2 * 0.9, fw.diameter / 2, fw.width, pose.delta, true, rim);
+    wheel(out, o, yaw, tilt, L, -track / 2 * 0.9, fw.diameter / 2, fw.width, pose.delta, true, rim);
+  }
+
+  /* A soft footprint on the ground. Without it the machine reads as floating,
+     which was most of the remaining toy-like quality. */
+  function buildShadow(out, o, yaw, tilt, len, wid, cx) {
+    var off = 0.35;
+    function s2(x, y) { return place([cx + x + off, y - off, 0.045], o, yaw, tilt); }
+    out.push({ p: [s2(-len / 2, -wid / 2), s2(len / 2, -wid / 2),
+                   s2(len / 2, wid / 2), s2(-len / 2, wid / 2)],
+               flat: "rgba(72,58,40,0.22)", cull: false });
   }
 
   /* ---------------- the implement ---------------- */
 
   function buildImplement(out, im, hx, hy, ix, iy, yawT, yawI, tilt) {
+    var lv = im.livery || {};
+    var main = hex(lv.body || "#A35A32");
+    var dark = mix(main, [0, 0, 0], 0.32);
+    var steel = hex(lv.trim || "#6C6252");
     var width = im.working_width.value;
     var depth = im.frame_depth.value;
     var bb = im.implement_wheelbase.value;
@@ -325,14 +378,14 @@
 
     // Drawbar from the tractor hitch back to the implement frame, drawn in the
     // implement frame so it swings with the hitch angle.
-    box(out, [hx, hy], yawI, tilt, -bb / 2, 0, 0.62, bb, 0.16, 0.14, COL.impDark);
+    box(out, [hx, hy], yawI, tilt, -bb / 2, 0, 0.62, bb, 0.16, 0.14, dark);
     // Hitch clevis at the tractor end.
-    box(out, [hx, hy], yawT, tilt, 0.06, 0, 0.6, 0.24, 0.2, 0.2, COL.steel);
+    box(out, [hx, hy], yawT, tilt, 0.06, 0, 0.6, 0.24, 0.2, 0.2, steel);
 
     // Main frame and the two wing spars.
-    box(out, o, yawI, tilt, 0, 0, 0.66, depth * 0.5, width, 0.22, COL.imp);
-    box(out, o, yawI, tilt, depth * 0.42, 0, 0.7, 0.18, width * 0.96, 0.16, COL.impDark);
-    box(out, o, yawI, tilt, -depth * 0.42, 0, 0.7, 0.18, width * 0.96, 0.16, COL.impDark);
+    box(out, o, yawI, tilt, 0, 0, 0.66, depth * 0.5, width, 0.22, main);
+    box(out, o, yawI, tilt, depth * 0.42, 0, 0.7, 0.18, width * 0.96, 0.16, dark);
+    box(out, o, yawI, tilt, -depth * 0.42, 0, 0.7, 0.16, width * 0.96, 0.16, dark);
 
     // Working tools along the bar. The count scales with width, capped so a
     // twenty metre machine does not cost a thousand faces.
@@ -357,13 +410,13 @@
 
     if (im.type === "trailed") {
       var tw = Math.min(width * 0.5, 3.4);
-      wheel(out, o, yawI, tilt, -depth * 0.55, tw / 2, 0.55, 0.32, 0, true);
-      wheel(out, o, yawI, tilt, -depth * 0.55, -tw / 2, 0.55, 0.32, 0, true);
+      wheel(out, o, yawI, tilt, -depth * 0.55, tw / 2, 0.55, 0.32, 0, true, steel);
+      wheel(out, o, yawI, tilt, -depth * 0.55, -tw / 2, 0.55, 0.32, 0, true, steel);
     }
 
     // Edge markers, so the working edge the metric refers to is visible.
     [1, -1].forEach(function (side) {
-      box(out, o, yawI, tilt, 0, side * width / 2, 0.66, depth * 0.6, 0.1, 0.95, COL.impDark);
+      box(out, o, yawI, tilt, 0, side * width / 2, 0.66, depth * 0.6, 0.1, 0.95, dark);
     });
   }
 
@@ -464,6 +517,8 @@
           im.implement_wheelbase.value, im.working_width.value / 2);
       }
       buildTracks(faces, s, frame, tilt, g.track_width.value);
+      buildShadow(faces, [pose.x, pose.y], pose.theta, tilt,
+        g.wheelbase.value * 1.7, g.track_width.value * 1.05, g.wheelbase.value * 0.45);
       buildTractor(faces, g, pose, tilt);
 
       if (im) {
@@ -471,6 +526,8 @@
         var hx = pose.x - a * Math.cos(pose.theta), hy = pose.y - a * Math.sin(pose.theta);
         var ix = hx - b * Math.cos(pose.thetaImplement);
         var iy = hy - b * Math.sin(pose.thetaImplement);
+        buildShadow(faces, [ix, iy], pose.thetaImplement, tilt,
+          im.frame_depth.value * 1.2, im.working_width.value, 0);
         buildImplement(faces, im, hx, hy, ix, iy, pose.theta, pose.thetaImplement, tilt);
       }
 

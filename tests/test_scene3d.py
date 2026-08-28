@@ -199,3 +199,92 @@ def test_implement_draft_class_reaches_the_renderer():
                                implement_from_catalog(imp))
     assert "draft_class" in machine["implement"]
     assert machine["implement"]["draft_class"]
+
+
+# --- appearance ------------------------------------------------------------
+
+def test_verified_liveries_carry_a_source():
+    from web.appearance import LIVERY, IMPLEMENT_LIVERY
+
+    for table in (LIVERY, IMPLEMENT_LIVERY):
+        for name, livery in table.items():
+            if livery["verified"]:
+                assert livery["source"], f"{name} claims verified with no source"
+            else:
+                assert livery["source"] is None, f"{name} has a source but is not verified"
+
+
+def test_known_brand_colours_are_the_published_ones():
+    """Getting John Deere green wrong would be visible instantly."""
+    from web.appearance import livery_for
+
+    assert livery_for("John Deere")["body"].upper() == "#367C2B"
+    assert livery_for("John Deere")["wheel"].upper() == "#FFDE00"
+    assert livery_for("Case IH")["body"].upper() == "#D0002D"
+    assert livery_for("New Holland")["body"].upper() == "#003F7D"
+    assert livery_for("Massey Ferguson")["body"].upper() == "#C71121"
+
+
+def test_every_catalog_manufacturer_has_a_livery():
+    from aggsim.catalog import load_catalog
+    from web.appearance import DEFAULT_LIVERY, livery_for
+
+    catalog = load_catalog()
+    for tractor in catalog.tractors.values():
+        assert livery_for(tractor.manufacturer) is not DEFAULT_LIVERY, tractor.manufacturer
+    for implement in catalog.implements.values():
+        assert livery_for(implement.manufacturer, implement=True) is not DEFAULT_LIVERY, \
+            implement.manufacturer
+
+
+def test_liveries_are_valid_hex_colours():
+    from web.appearance import IMPLEMENT_LIVERY, LIVERY
+
+    for table in (LIVERY, IMPLEMENT_LIVERY):
+        for name, livery in table.items():
+            for key in ("body", "trim", "wheel", "roof"):
+                value = livery[key]
+                assert re.fullmatch(r"#[0-9A-Fa-f]{6}", value), f"{name}.{key} = {value}"
+
+
+def test_machines_of_different_size_get_different_shapes():
+    from aggsim.catalog import load_catalog
+    from web.appearance import profile_for
+
+    catalog = load_catalog()
+    assert profile_for(catalog.tractor("jd_5075e"))[0] == "utility"
+    assert profile_for(catalog.tractor("jd_8r_410"))[0] == "rowcrop"
+    assert profile_for(catalog.tractor("monarch_mk_v"))[0] == "electric"
+
+
+def test_the_electric_machine_has_no_exhaust_stack():
+    from aggsim.catalog import load_catalog
+    from web.appearance import profile_for
+
+    _, profile = profile_for(load_catalog().tractor("monarch_mk_v"))
+    assert profile["exhaust"] == "none"
+
+
+def test_livery_reaches_the_payload_with_its_provenance():
+    out = run_simulation(SimulationRequest(
+        tractor="fendt_724_vario", implement="kuhn_excelerator_8005_50",
+        duration=10.0), 40000)
+    machine = out["scene"]["machine"]
+    assert machine["livery"]["verified"] is True
+    assert machine["livery"]["source"]
+    assert machine["implement"]["livery"]["body"]
+
+
+def test_appearance_cannot_change_a_result():
+    """Two runs differing only in livery must be numerically identical."""
+    from web import appearance
+
+    a = run_simulation(SimulationRequest(tractor="jd_6145r", duration=20.0), 40000)
+    original = appearance.LIVERY["John Deere"]
+    appearance.LIVERY["John Deere"] = appearance.DEFAULT_LIVERY
+    try:
+        b = run_simulation(SimulationRequest(tractor="jd_6145r", duration=20.0), 40000)
+    finally:
+        appearance.LIVERY["John Deere"] = original
+    assert a["summary"] == b["summary"]
+    assert a["series"]["cross_track"] == b["series"]["cross_track"]
