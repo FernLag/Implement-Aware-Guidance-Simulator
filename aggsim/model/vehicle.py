@@ -42,22 +42,39 @@ def from_tractor(tractor) -> VehicleParams:
     )
 
 
+def _terrain_terms(v: float, terrain) -> tuple[float, float]:
+    """(effective forward speed, signed lateral drift) for a terrain, or none."""
+    if terrain is None:
+        return v, 0.0
+    return v * terrain.speed_factor, terrain.lateral_drift
+
+
 def kinematic_derivative(
-    state_vec: np.ndarray, v: float, delta: float, wheelbase: float
+    state_vec: np.ndarray, v: float, delta: float, wheelbase: float, terrain=None
 ) -> np.ndarray:
-    """Time derivative of (x, y, theta)."""
+    """Time derivative of (x, y, theta).
+
+    With terrain, forward speed is scaled by (1 - slip) and a lateral drift
+    velocity is added perpendicular to the heading. The drift enters the
+    position equations only: it translates the vehicle without yawing it,
+    which is what a uniform down-slope pull does to a rigid body already in
+    steady sideslip.
+    """
     theta = state_vec[2]
+    v_eff, drift = _terrain_terms(v, terrain)
+    # Left-of-heading unit vector is (-sin theta, cos theta).
     return np.array(
         [
-            v * np.cos(theta),
-            v * np.sin(theta),
-            (v / wheelbase) * np.tan(delta),
+            v_eff * np.cos(theta) - drift * np.sin(theta),
+            v_eff * np.sin(theta) + drift * np.cos(theta),
+            (v_eff / wheelbase) * np.tan(delta),
         ]
     )
 
 
 def rk4_step(
-    state_vec: np.ndarray, v: float, delta: float, wheelbase: float, dt: float
+    state_vec: np.ndarray, v: float, delta: float, wheelbase: float, dt: float,
+    terrain=None,
 ) -> np.ndarray:
     """One fixed-step RK4 integration of the bicycle model.
 
@@ -69,7 +86,7 @@ def rk4_step(
     """
 
     def f(s: np.ndarray) -> np.ndarray:
-        return kinematic_derivative(s, v, delta, wheelbase)
+        return kinematic_derivative(s, v, delta, wheelbase, terrain)
 
     k1 = f(state_vec)
     k2 = f(state_vec + 0.5 * dt * k1)
@@ -95,15 +112,16 @@ def steering_derivative(delta: float, delta_cmd: float, tau: float, rate_limit: 
 
 def augmented_derivative(
     vec: np.ndarray, v: float, delta_cmd: float, wheelbase: float,
-    tau: float, rate_limit: float,
+    tau: float, rate_limit: float, terrain=None,
 ) -> np.ndarray:
     """Derivative of the augmented state (x, y, theta, delta)."""
     theta, delta = vec[2], vec[3]
+    v_eff, drift = _terrain_terms(v, terrain)
     return np.array(
         [
-            v * np.cos(theta),
-            v * np.sin(theta),
-            (v / wheelbase) * np.tan(delta),
+            v_eff * np.cos(theta) - drift * np.sin(theta),
+            v_eff * np.sin(theta) + drift * np.cos(theta),
+            (v_eff / wheelbase) * np.tan(delta),
             steering_derivative(delta, delta_cmd, tau, rate_limit),
         ]
     )
@@ -111,12 +129,12 @@ def augmented_derivative(
 
 def rk4_step_augmented(
     vec: np.ndarray, v: float, delta_cmd: float, wheelbase: float,
-    tau: float, rate_limit: float, dt: float,
+    tau: float, rate_limit: float, dt: float, terrain=None,
 ) -> np.ndarray:
     """One RK4 step of the augmented plant, delta_cmd held across the step."""
 
     def f(s: np.ndarray) -> np.ndarray:
-        return augmented_derivative(s, v, delta_cmd, wheelbase, tau, rate_limit)
+        return augmented_derivative(s, v, delta_cmd, wheelbase, tau, rate_limit, terrain)
 
     k1 = f(vec)
     k2 = f(vec + 0.5 * dt * k1)

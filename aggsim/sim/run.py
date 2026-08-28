@@ -20,6 +20,7 @@ from typing import Callable
 import numpy as np
 
 from ..config.steering import SteeringParams
+from ..config.terrain import Terrain
 from ..geometry.abline import ABLine
 from ..model.state import State
 from ..model.vehicle import VehicleParams, rk4_step, rk4_step_augmented
@@ -71,6 +72,7 @@ def simulate(
     config: SimConfig,
     steering: SteeringParams | None = None,
     initial_delta: float = 0.0,
+    terrain: Terrain | None = None,
 ) -> SimLog:
     """Integrate the vehicle under a controller, logging error each step."""
     n = config.n_steps
@@ -106,12 +108,13 @@ def simulate(
         if i < n:
             if steering is None:
                 vec[:3] = rk4_step(
-                    vec[:3], config.speed, delta_cmd, params.wheelbase, config.dt
+                    vec[:3], config.speed, delta_cmd, params.wheelbase, config.dt,
+                    terrain,
                 )
             else:
                 vec = rk4_step_augmented(
                     vec, config.speed, delta_cmd, params.wheelbase,
-                    tau, rate_limit, config.dt,
+                    tau, rate_limit, config.dt, terrain,
                 )
                 vec[3] = float(
                     np.clip(vec[3], -params.max_steer_angle, params.max_steer_angle)

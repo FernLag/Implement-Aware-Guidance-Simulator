@@ -1,0 +1,58 @@
+# Soil surface conditions (Stage 3).
+#
+# Slip here is TRAVEL REDUCTION -- the fraction by which forward travel falls
+# short of what the wheels turned. ASAE Distinguished Lecture 27 notes the
+# common name "slip" is technically incorrect for this quantity; the catalog
+# keeps the common name and this note.
+#
+# One interpretation is baked in and must be stated: the published figures are
+# OPTIMUM slip ranges for power transfer under correct ballasting, not
+# measurements of what a given tractor does. Using them as operating slip
+# assumes a properly ballasted machine. That is a modelling choice, not a
+# sourced fact.
+#
+# Values are the midpoint of each published range.
+
+soils:
+  concrete:
+    description: Hard surface, road transport
+    slip:
+      value: 0.06
+      unit: dimensionless
+      source: https://bpb-us-e1.wpmucdn.com/blogs.cornell.edu/dist/e/1628/files/2016/03/proper-ballasting-1m0nl6q.pdf
+      note: >-
+        "optimal wheel slip is about 4-8% on concrete" as printed, PM 2089g,
+        July 2010, "Ballasting tractors for fuel efficiency". Midpoint 6%.
+
+  firm_untilled:
+    description: Firm, untilled soil
+    slip:
+      value: 0.095
+      unit: dimensionless
+      source: https://bpb-us-e1.wpmucdn.com/blogs.cornell.edu/dist/e/1628/files/2016/03/proper-ballasting-1m0nl6q.pdf
+      note: >-
+        "On firm, untilled soil, wheel slip should be in a range of about
+        6-13%" as printed, PM 2089g, July 2010. Midpoint 9.5%.
+
+  tilled:
+    description: Tilled surface
+    slip:
+      value: 0.12
+      unit: dimensionless
+      source: https://bpb-us-e1.wpmucdn.com/blogs.cornell.edu/dist/e/1628/files/2016/03/proper-ballasting-1m0nl6q.pdf
+      note: >-
+        "More slippage is allowed on a tilled surface, 8-16%" as printed,
+        PM 2089g, July 2010. Midpoint 12%.
+
+  sandy:
+    description: Non-cohesive sandy soil
+    slip:
+      value: 0.18
+      unit: dimensionless
+      assumed: true
+      rationale: >-
+        PM 2089g states only "with slightly more yet on a non-cohesive sandy
+        soil" and gives NO number for this case, unlike the other three
+        surfaces. 18% is placed just above the published tilled range
+        (8-16%) to honour "slightly more", but the figure itself is invented
+        and must be treated as a swept input, not a specification.
