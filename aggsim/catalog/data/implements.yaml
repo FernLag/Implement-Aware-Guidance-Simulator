@@ -1,0 +1,363 @@
+# Implement catalog. All values SI.
+#
+# Working width is the primary independent variable of Stage 6, so it is
+# sourced for every entry. Where a manufacturer publishes row count and row
+# spacing rather than a width figure, width is the product of the two and the
+# `note` records the derivation.
+#
+# hitch_distance and implement_wheelbase are assumed for every trailed entry.
+# No manufacturer in this catalog publishes drawbar-to-implement-axle
+# geometry. Stage 6 sweeps hitch distance as an independent variable, so no
+# reported result may depend on these defaults -- they are starting points
+# for the sweep, not findings.
+#
+# draft_power_per_width is the Stage 0 pairing check's power demand term. The
+# full ASABE D497 draft model (f_s * (A + B*v + C*v^2) * w * d) is the correct
+# long-term replacement, but its A/B/C coefficient table sits behind the
+# paywalled standard and is deliberately NOT reproduced from memory here.
+# Only the John Deere 2230FH figure below is manufacturer-published; the rest
+# are assumed and anchored to it.
+
+implements:
+  - id: landpride_rcr1860
+    manufacturer: Land Pride
+    model: RCR1860
+    type: mounted
+    draft_class: rotary_cutter
+    working_width:
+      value: 1.524
+      unit: m
+      source: https://www.manualshelf.com/manual/land-pride/rcr1860-series/rotary-cutters-single-deck-specifications-capacities.html
+      note: "60 in cutting width as printed"
+    mass:
+      value: 271.7
+      unit: kg
+      source: https://www.manualshelf.com/manual/land-pride/rcr1860-series/rotary-cutters-single-deck-specifications-capacities.html
+      note: "599 lb as printed"
+    draft_power_per_width:
+      value: 6000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure. A rotary cutter does not engage soil, so
+        demand is well below the tillage anchor (John Deere 2230FH,
+        19600-29400 W/m). The intensity ordering across this catalog
+        (disk > cultivator > planter > drill > cutter) is assumed, not sourced.
+
+  - id: jd_1590_10ft
+    manufacturer: John Deere
+    model: 1590 No-Till Drill (10 ft)
+    type: trailed
+    draft_class: no_till_drill
+    working_width:
+      value: 3.048
+      unit: m
+      source: https://www.deere.com/en/seeding-equipment/1590-no-till-drill/
+      note: "offered in 10-, 15- and 20-ft sizes; this is the 10-ft"
+    mass:
+      value: 2300
+      unit: kg
+      assumed: true
+      rationale: >-
+        John Deere does not publish machine mass for the 1590. Nominal
+        placeholder. Implement mass is not consumed by Stages 1-6 (the model
+        is kinematic); it is carried for the Stage 7 URDF and must be
+        replaced with a dealer spec sheet figure before Stage 7.
+    hitch_distance:
+      value: 3.2
+      unit: m
+      assumed: true
+      rationale: >-
+        Drawbar-to-implement-axle distance is not published. Nominal value;
+        Stage 6 sweeps hitch distance, so results must not depend on it.
+    implement_wheelbase:
+      value: 1.2
+      unit: m
+      assumed: true
+      rationale: >-
+        Not published. Nominal value for a single-axle drawn drill; Stage 6
+        sweeps this geometry.
+    draft_power_per_width:
+      value: 10000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure. Anchored below the tillage figure (John
+        Deere 2230FH, 19600-29400 W/m) since no-till seeding disturbs far
+        less soil than full-width cultivation. Ordering assumed, not sourced.
+
+  - id: jd_1590_20ft
+    manufacturer: John Deere
+    model: 1590 No-Till Drill (20 ft)
+    type: trailed
+    draft_class: no_till_drill
+    working_width:
+      value: 6.096
+      unit: m
+      source: https://www.deere.com/en/seeding-equipment/1590-no-till-drill/
+      note: "offered in 10-, 15- and 20-ft sizes; this is the 20-ft"
+    mass:
+      value: 4200
+      unit: kg
+      assumed: true
+      rationale: >-
+        Not published by John Deere. Nominal placeholder; unused by Stages
+        1-6, replace before Stage 7.
+    hitch_distance:
+      value: 3.6
+      unit: m
+      assumed: true
+      rationale: >-
+        Not published. Nominal value; Stage 6 sweeps hitch distance.
+    implement_wheelbase:
+      value: 1.4
+      unit: m
+      assumed: true
+      rationale: >-
+        Not published. Nominal value; Stage 6 sweeps this geometry.
+    draft_power_per_width:
+      value: 10000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure. Anchored below the 2230FH tillage figure;
+        ordering assumed, not sourced.
+
+  - id: caseih_tt345_22ft
+    manufacturer: Case IH
+    model: True-Tandem 345 (22 ft)
+    type: trailed
+    draft_class: disk_harrow
+    working_width:
+      value: 6.7
+      unit: m
+      source: https://www.caseih.com/en-us/unitedstates/products/tillage/true-tandem-disk-harrows/true-tandem-345
+      note: "22 ft (6.7 m) as printed"
+    mass:
+      value: 7000
+      unit: kg
+      assumed: true
+      rationale: >-
+        Case IH does not publish machine mass on the product page. Nominal
+        placeholder; unused by Stages 1-6, replace before Stage 7.
+    hitch_distance:
+      value: 4.5
+      unit: m
+      assumed: true
+      rationale: >-
+        Not published. Nominal value; Stage 6 sweeps hitch distance.
+    implement_wheelbase:
+      value: 2.0
+      unit: m
+      assumed: true
+      rationale: >-
+        Not published. Nominal value; Stage 6 sweeps this geometry.
+    draft_power_per_width:
+      value: 25000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure. Placed near the top of the John Deere
+        2230FH published range (19600-29400 W/m) because tandem disking
+        engages more soil than field cultivation. Ordering assumed.
+
+  - id: caseih_tt345_34ft
+    manufacturer: Case IH
+    model: True-Tandem 345 (34 ft)
+    type: trailed
+    draft_class: disk_harrow
+    working_width:
+      value: 10.4
+      unit: m
+      source: https://www.caseih.com/en-us/unitedstates/products/tillage/true-tandem-disk-harrows/true-tandem-345
+      note: "34 ft (10.4 m) as printed"
+    mass:
+      value: 10500
+      unit: kg
+      assumed: true
+      rationale: >-
+        Not published by Case IH. Nominal placeholder; unused by Stages 1-6,
+        replace before Stage 7.
+    hitch_distance:
+      value: 5.0
+      unit: m
+      assumed: true
+      rationale: >-
+        Not published. Nominal value; Stage 6 sweeps hitch distance.
+    implement_wheelbase:
+      value: 2.4
+      unit: m
+      assumed: true
+      rationale: >-
+        Not published. Nominal value; Stage 6 sweeps this geometry.
+    draft_power_per_width:
+      value: 25000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure. Anchored near the top of the 2230FH
+        published range; ordering assumed.
+
+  - id: jd_2230fh_25ft
+    manufacturer: John Deere
+    model: 2230FH Field Cultivator (25.5 ft)
+    type: trailed
+    draft_class: field_cultivator
+    working_width:
+      value: 7.8
+      unit: m
+      source: https://www.deere.com/en/tillage/2230-floating-hitch-field-cultivator/
+      note: "range 7.8-21.2 m (25.5-69.5 ft) as printed; this is the narrow end"
+    mass:
+      value: 6800
+      unit: kg
+      assumed: true
+      rationale: >-
+        Not published by John Deere. Nominal placeholder; unused by Stages
+        1-6, replace before Stage 7.
+    working_depth:
+      value: 0.127
+      unit: m
+      source: https://www.deere.com/en/tillage/2230-floating-hitch-field-cultivator/
+      note: "working depths up to 5 in as printed"
+    hitch_distance:
+      value: 5.0
+      unit: m
+      assumed: true
+      rationale: >-
+        Not published. Nominal value; Stage 6 sweeps hitch distance.
+    implement_wheelbase:
+      value: 2.2
+      unit: m
+      assumed: true
+      rationale: >-
+        Not published. Nominal value; Stage 6 sweeps this geometry.
+    draft_power_per_width:
+      value: 29400
+      unit: W/m
+      source: https://www.deere.com/en/tillage/2230-floating-hitch-field-cultivator/
+      note: >-
+        "19.6-29.4 kW/m (8 to 12 hp-ft), depending on the soil, depth, and
+        speed" as printed; upper bound taken as the worst case for a
+        feasibility check. This is the only manufacturer-published draft
+        figure in the catalog and anchors every assumed value.
+
+  - id: jd_2230fh_69ft
+    manufacturer: John Deere
+    model: 2230FH Field Cultivator (69.5 ft)
+    type: trailed
+    draft_class: field_cultivator
+    working_width:
+      value: 21.2
+      unit: m
+      source: https://www.deere.com/en/tillage/2230-floating-hitch-field-cultivator/
+      note: "range 7.8-21.2 m (25.5-69.5 ft) as printed; this is the wide end"
+    mass:
+      value: 18000
+      unit: kg
+      assumed: true
+      rationale: >-
+        Not published by John Deere. Nominal placeholder; unused by Stages
+        1-6, replace before Stage 7.
+    working_depth:
+      value: 0.127
+      unit: m
+      source: https://www.deere.com/en/tillage/2230-floating-hitch-field-cultivator/
+      note: "working depths up to 5 in as printed"
+    hitch_distance:
+      value: 6.0
+      unit: m
+      assumed: true
+      rationale: >-
+        Not published. Nominal value; Stage 6 sweeps hitch distance.
+    implement_wheelbase:
+      value: 3.0
+      unit: m
+      assumed: true
+      rationale: >-
+        Not published. Nominal value; Stage 6 sweeps this geometry.
+    draft_power_per_width:
+      value: 29400
+      unit: W/m
+      source: https://www.deere.com/en/tillage/2230-floating-hitch-field-cultivator/
+      note: >-
+        "19.6-29.4 kW/m (8 to 12 hp-ft)" as printed; upper bound taken as the
+        worst case for a feasibility check.
+
+  - id: jd_1775nt_16row30
+    manufacturer: John Deere
+    model: 1775NT 16Row30 Planter
+    type: trailed
+    draft_class: planter
+    working_width:
+      value: 12.192
+      unit: m
+      source: https://www.deere.com/en/planting-equipment/1775nt-16row30-planter/
+      note: >-
+        Derived: 16 rows x 30 in (76 cm) row spacing, both as printed. Deere
+        publishes the 12 ft folded transport width, not a working width.
+    mass:
+      value: 11000
+      unit: kg
+      assumed: true
+      rationale: >-
+        Not published by John Deere. Nominal placeholder; unused by Stages
+        1-6, replace before Stage 7.
+    hitch_distance:
+      value: 5.5
+      unit: m
+      assumed: true
+      rationale: >-
+        Not published. Nominal value; Stage 6 sweeps hitch distance.
+    implement_wheelbase:
+      value: 2.6
+      unit: m
+      assumed: true
+      rationale: >-
+        Not published. Nominal value; Stage 6 sweeps this geometry.
+    draft_power_per_width:
+      value: 8000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure. Anchored below the 2230FH tillage range
+        since row-unit seeding disturbs less soil than full-width
+        cultivation. Ordering assumed, not sourced.
+
+  - id: jd_1775nt_24row30
+    manufacturer: John Deere
+    model: 1775NT 24Row30 Planter
+    type: trailed
+    draft_class: planter
+    working_width:
+      value: 18.288
+      unit: m
+      source: https://www.deere.com/en-us/products-and-solutions/planters/drawn-planters/1775nt-24row30-drawn-planter-njixwkg
+      note: >-
+        Derived: 24 rows x 30 in (76 cm) row spacing, both as printed.
+    mass:
+      value: 15500
+      unit: kg
+      assumed: true
+      rationale: >-
+        Not published by John Deere. Nominal placeholder; unused by Stages
+        1-6, replace before Stage 7.
+    hitch_distance:
+      value: 6.0
+      unit: m
+      assumed: true
+      rationale: >-
+        Not published. Nominal value; Stage 6 sweeps hitch distance.
+    implement_wheelbase:
+      value: 2.8
+      unit: m
+      assumed: true
+      rationale: >-
+        Not published. Nominal value; Stage 6 sweeps this geometry.
+    draft_power_per_width:
+      value: 8000
+      unit: W/m
+      assumed: true
+      rationale: >-
+        No published draft figure. Anchored below the 2230FH tillage range;
+        ordering assumed, not sourced.

@@ -1,0 +1,6 @@
+# Stages 0-6. No simulation frameworks: the integrator and vehicle model are
+# written by hand so their behaviour is defensible.
+numpy
+matplotlib
+pyyaml      # equipment catalog serialisation
+pytest      # tests

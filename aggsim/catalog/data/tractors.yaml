@@ -1,0 +1,260 @@
+# Tractor catalog. All values SI. Every parameter carries either a `source`
+# URL or `assumed: true` with a rationale -- see aggsim/catalog/param.py.
+#
+# Wheelbases are converted from the inch figure (higher printed precision);
+# the `note` records the figure as printed so the conversion stays checkable.
+#
+# max_steer_angle is assumed for every entry: TractorData does not publish
+# steering geometry, and manufacturers rarely do.
+#
+# drawbar_power is sourced from Nebraska tractor test results where one
+# exists. Where it does not, it is assumed as 0.756 x gross engine power --
+# the mean drawbar/gross ratio of the four Nebraska-tested tractors in this
+# same catalog (8R 410 0.806, 6145R 0.741, T7.270 0.725, Magnum 340 0.754).
+
+tractors:
+  - id: jd_5075e
+    manufacturer: John Deere
+    model: 5075E
+    years: "2008-2025"
+    tire_front: "9.5-24"
+    tire_rear: "16.9-28"
+    wheelbase:
+      value: 2.050
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/008/1/0/8108-john-deere-5075e-dimensions.html
+      note: "80.7 in / 204 cm as printed"
+    mass:
+      value: 3299
+      unit: kg
+      source: https://www.tractordata.com/farm-tractors/008/1/0/8108-john-deere-5075e-dimensions.html
+      note: "4WD Cab, 7275 lb / 3299 kg as printed"
+    engine_power:
+      value: 55927
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/005/7/9/5793-john-deere-5075e.html
+      note: "75 hp gross / 55.9 kW as printed"
+    drawbar_power:
+      value: 42280
+      unit: W
+      assumed: true
+      rationale: >-
+        No Nebraska drawbar test published for this model. Taken as 0.756 x
+        gross engine power, the mean drawbar/gross ratio of the four
+        Nebraska-tested tractors in this catalog.
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published. 45 deg is the midpoint of the
+        40-55 deg range typical of MFWD utility tractors. Affects only
+        saturation, which straight-line tracking should never reach.
+
+  - id: kubota_m7_172
+    manufacturer: Kubota
+    model: M7-172
+    years: "2018-2020"
+    tire_front: "540/65R28"
+    tire_rear: "650/65R38"
+    wheelbase:
+      value: 2.720
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/010/1/0/10109-kubota-m7172-dimensions.html
+      note: "107.1 in / 272 cm as printed"
+    mass:
+      value: 6300
+      unit: kg
+      source: https://www.tractordata.com/farm-tractors/010/1/0/10109-kubota-m7172-dimensions.html
+      note: "shipping weight, 13889 lb / 6300 kg as printed"
+    engine_power:
+      value: 126769
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/010/1/0/10109-kubota-m7172.html
+      note: "170 hp gross as printed"
+    drawbar_power:
+      value: 95840
+      unit: W
+      assumed: true
+      rationale: >-
+        No Nebraska drawbar test published for this model. Taken as 0.756 x
+        gross engine power, the mean drawbar/gross ratio of the four
+        Nebraska-tested tractors in this catalog.
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published. 45 deg is the midpoint of the
+        40-55 deg range typical of MFWD row-crop tractors.
+
+  - id: jd_6145r
+    manufacturer: John Deere
+    model: 6145R
+    years: "2015-2021"
+    tire_front: "380/85R30"
+    tire_rear: "480/80R42"
+    wheelbase:
+      value: 2.766
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/009/1/1/9110-john-deere-6145r-dimensions.html
+      note: "4WD, 108.9 in / 276 cm as printed"
+    mass:
+      value: 7723
+      unit: kg
+      source: https://www.tractordata.com/farm-tractors/009/1/1/9110-john-deere-6145r-dimensions.html
+      note: "shipping weight, 17028 lb / 7723 kg as printed"
+    engine_power:
+      value: 108126
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/009/1/1/9110-john-deere-6145r.html
+      note: "145 hp gross as printed"
+    drawbar_power:
+      value: 80132
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/009/1/1/9110-john-deere-6145r.html
+      note: "107.46 hp drawbar (tested) as printed"
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published. 45 deg is the midpoint of the
+        40-55 deg range typical of MFWD row-crop tractors.
+
+  - id: nh_t7_270
+    manufacturer: New Holland
+    model: T7.270
+    years: "2011-2024"
+    tire_front: "380/85R34"
+    tire_rear: "480/80R46"
+    wheelbase:
+      value: 2.883
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/009/4/5/9458-new-holland-t7270-dimensions.html
+      note: "standard, 113.5 in / 288 cm as printed"
+    mass:
+      value: 6950
+      unit: kg
+      source: https://www.tractordata.com/farm-tractors/009/4/5/9458-new-holland-t7270-dimensions.html
+      note: "standard shipping, 15322 lb / 6950 kg as printed"
+    engine_power:
+      value: 170020
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/007/5/8/7584-new-holland-t7270.html
+      note: "228 hp gross / 170.0 kW as printed"
+    drawbar_power:
+      value: 123190
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/007/5/8/7584-new-holland-t7270.html
+      note: "165.2 hp / 123.2 kW drawbar (tested) as printed"
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published. 45 deg is the midpoint of the
+        40-55 deg range typical of MFWD row-crop tractors.
+
+  - id: fendt_724_vario
+    manufacturer: Fendt
+    model: 724 Vario
+    years: "2012-2025"
+    tire_front: "540/65R30"
+    tire_rear: "650/65R42"
+    wheelbase:
+      value: 2.901
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/011/2/5/11259-fendt-724-vario-dimensions.html
+      note: "114.2 in / 290 cm as printed"
+    mass:
+      value: 9250
+      unit: kg
+      source: https://www.tractordata.com/farm-tractors/011/2/5/11259-fendt-724-vario-dimensions.html
+      note: "operating weight, 20393 lb / 9250 kg as printed"
+    engine_power:
+      value: 176731
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/009/0/3/9030-fendt-724-vario.html
+      note: "237 hp gross / 176.7 kW as printed"
+    drawbar_power:
+      value: 133610
+      unit: W
+      assumed: true
+      rationale: >-
+        No Nebraska drawbar test published for this model. Taken as 0.756 x
+        gross engine power, the mean drawbar/gross ratio of the four
+        Nebraska-tested tractors in this catalog.
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published. 45 deg is the midpoint of the
+        40-55 deg range typical of MFWD row-crop tractors.
+
+  - id: caseih_magnum_340
+    manufacturer: Case IH
+    model: Magnum 340
+    years: "2011-2025"
+    wheelbase:
+      value: 3.048
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/006/7/2/6725-caseih-magnum-340-dimensions.html
+      note: "120 in / 304 cm as printed"
+    mass:
+      value: 12805
+      unit: kg
+      source: https://www.tractordata.com/farm-tractors/006/7/2/6725-caseih-magnum-340-dimensions.html
+      note: "28230 lb / 12805 kg as printed"
+    engine_power:
+      value: 253538
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/006/7/2/6725-caseih-magnum-340.html
+      note: "340 hp gross as printed"
+    drawbar_power:
+      value: 191279
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/006/7/2/6725-caseih-magnum-340.html
+      note: "256.51 hp drawbar (tested) as printed"
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published. 45 deg is the midpoint of the
+        40-55 deg range typical of MFWD row-crop tractors.
+
+  - id: jd_8r_410
+    manufacturer: John Deere
+    model: 8R 410
+    years: "2019-"
+    tire_front: "420/85R34"
+    tire_rear: "480/80R50"
+    wheelbase:
+      value: 3.051
+      unit: m
+      source: https://www.tractordata.com/farm-tractors/010/6/4/10640-john-deere-8r-410-dimensions.html
+      note: "120.1 in / 305 cm as printed"
+    mass:
+      value: 12610
+      unit: kg
+      source: https://www.tractordata.com/farm-tractors/010/6/4/10640-john-deere-8r-410-dimensions.html
+      note: "base weight, 27800 lb / 12610 kg as printed"
+    engine_power:
+      value: 305737
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/010/6/4/10640-john-deere-8r-410.html
+      note: "410 hp gross as printed"
+    drawbar_power:
+      value: 246381
+      unit: W
+      source: https://www.tractordata.com/farm-tractors/010/6/4/10640-john-deere-8r-410.html
+      note: "330.42 hp drawbar (tested) as printed"
+    max_steer_angle:
+      value: 0.7854
+      unit: rad
+      assumed: true
+      rationale: >-
+        Steering geometry is not published. 45 deg is the midpoint of the
+        40-55 deg range typical of MFWD row-crop tractors.
