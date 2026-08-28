@@ -1,0 +1,32 @@
+# Steering actuator parameters (Stage 2).
+#
+# CLAUDE.md predicted both of these would be assumptions, and they are. The
+# rationales name what the literature does say and where verification failed,
+# so the gap is visible rather than papered over.
+
+steering:
+  tau:
+    value: 0.20
+    unit: s
+    assumed: true
+    rationale: >-
+      Manufacturers do not publish steering hydraulic time constants. The
+      agricultural autosteer literature reports lag values clustering around
+      0.15-0.2 s -- see "Stability Study of Time Lag Disturbance in an
+      Automatic Tractor Steering System Based on Sliding Mode Predictive
+      Control", Agriculture 12(12):2091, doi:10.3390/agriculture12122091
+      (authors not recorded here; not verified). That primary text could not be
+      retrieved to verify the figure in context (mdpi.com returned HTTP 403),
+      so 0.20 s is recorded as an assumption consistent with the reported
+      range, NOT as a sourced value. Stage 2 sweeps tau, so no reported
+      result may depend on this default.
+  rate_limit:
+    value: 0.4363
+    unit: rad/s
+    assumed: true
+    rationale: >-
+      25 deg/s at the road wheels. Autosteer vendors expose "steering slew
+      rate" as a tunable and state that it is capped by the machine's
+      physical capability, but publish no numerical limit; no value in deg/s
+      was found in the literature searched. Stage 2 sweeps this, so no
+      reported result may depend on the default.
