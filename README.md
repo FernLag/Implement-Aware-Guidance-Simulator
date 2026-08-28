@@ -22,7 +22,7 @@ is. Nearly all published path-tracking work optimises tractor error.
 git clone https://github.com/FernLag/Implement-Aware-Guidance-Simulator.git
 cd Implement-Aware-Guidance-Simulator
 python3 -m pip install -r requirements.txt
-python3 -m pytest tests/ -q          # 230 tests, ~85 s
+python3 -m pytest tests/ -q          # 240 tests, ~85 s
 ```
 
 Requires Python 3.11+. Dependencies are NumPy, Matplotlib, PyYAML and pytest.
@@ -193,6 +193,14 @@ edge error on the same axes. Results include skip between adjacent passes as a
 percentage of working width, so the output carries an agronomic unit and not
 only a control one.
 
+### Hosting it for free
+
+`render.yaml` deploys it to Render's free tier, which requires no payment
+method and suspends rather than billing when a limit is reached. The blueprint
+declares no database and no persistent disk, so nothing in it can become a
+paid resource. See [DEPLOYMENT.md](DEPLOYMENT.md) for the verified figures,
+the trade-offs, and configs for Docker platforms and Vercel.
+
 For a public deployment use a real server behind TLS:
 
 ```bash
@@ -304,7 +312,7 @@ aggsim/
     tuning.py       dual-objective gain search (Stage 6)
 scripts/          one demo script per stage, plus asset and audit tools
 web/              browser interface (Flask), separate from the simulation core
-tests/            230 tests
+tests/            240 tests
 ```
 
 ### Conventions

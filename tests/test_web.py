@@ -446,3 +446,56 @@ def test_message_store_honours_an_explicit_path(tmp_path, monkeypatch):
     settings = load_settings()
     assert settings.message_store_writable is True
     assert settings.message_store == target
+
+
+def test_render_blueprint_declares_only_free_resources():
+    """Guards the property the deployment was chosen for: it cannot be billed.
+
+    Render's free tier suspends rather than charging when a limit is reached,
+    but only while nothing in the blueprint is a paid resource. A database or
+    a persistent disk would be, and a free Postgres would additionally expire
+    after 30 days and take its data with it.
+    """
+    import yaml
+
+    blueprint = yaml.safe_load((REPO / "render.yaml").read_text())
+    assert "databases" not in blueprint, "a database would be a paid resource"
+
+    services = blueprint["services"]
+    assert len(services) == 1
+    service = services[0]
+    assert service["plan"] == "free"
+    for paid_only in ("disk", "numInstances", "autoscaling"):
+        assert paid_only not in service, f"{paid_only} is not available on the free plan"
+
+
+def test_render_blueprint_runs_a_single_worker():
+    """One worker keeps the in-memory rate limiter exact and fits 512 MB."""
+    blueprint = __import__("yaml").safe_load((REPO / "render.yaml").read_text())
+    assert "-w 1" in blueprint["services"][0]["startCommand"]
+
+
+def test_ephemeral_storage_is_disclosed_not_hidden(monkeypatch):
+    """Writable is not durable. A visitor is told which one this is."""
+    monkeypatch.setenv("AGGSIM_STORAGE_EPHEMERAL", "true")
+    settings = load_settings()
+    assert settings.accepts_messages is True
+    assert settings.messages_are_durable is False
+
+    app = create_app(replace(settings, secret_key="k", secret_key_is_ephemeral=False,
+                             rate_limit_per_minute=6000, rate_limit_burst=500))
+    html = app.test_client().get("/contact").get_data(as_text=True)
+    assert "temporary disk" in html
+    assert "lost after that" in html
+
+
+def test_durable_storage_shows_no_warning(monkeypatch, tmp_path):
+    monkeypatch.setenv("AGGSIM_STORAGE_EPHEMERAL", "false")
+    monkeypatch.setenv("AGGSIM_MESSAGE_STORE", str(tmp_path / "m.jsonl"))
+    settings = load_settings()
+    assert settings.messages_are_durable is True
+
+    app = create_app(replace(settings, secret_key="k", secret_key_is_ephemeral=False,
+                             rate_limit_per_minute=6000, rate_limit_burst=500))
+    html = app.test_client().get("/contact").get_data(as_text=True)
+    assert "temporary disk" not in html

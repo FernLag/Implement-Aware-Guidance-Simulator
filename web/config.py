@@ -56,6 +56,10 @@ class Settings:
     # someone presses send, after they had already typed the message.
     message_store: Path | None
     message_store_writable: bool
+    # True where the disk survives only until the next deploy or restart, which
+    # is the case on every free tier here. Writable is not the same as durable,
+    # and the contact page says which one it has.
+    storage_ephemeral: bool
 
     # Limits. Every one of these bounds an attacker controlled quantity.
     rate_limit_per_minute: int
@@ -65,8 +69,12 @@ class Settings:
 
     @property
     def accepts_messages(self) -> bool:
-        """False when there is nowhere durable to put a message."""
+        """False when there is nowhere at all to put a message."""
         return self.message_store_writable
+
+    @property
+    def messages_are_durable(self) -> bool:
+        return self.message_store_writable and not self.storage_ephemeral
 
     @property
     def contact_configured(self) -> bool:
@@ -127,4 +135,5 @@ def load_settings() -> Settings:
         max_simulation_steps=_int("AGGSIM_MAX_SIMULATION_STEPS", 40_000, 1000, 400_000),
         message_store=store,
         message_store_writable=writable,
+        storage_ephemeral=_flag("AGGSIM_STORAGE_EPHEMERAL", False),
     )

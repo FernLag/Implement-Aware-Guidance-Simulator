@@ -15,6 +15,14 @@
     </div>
     {% endif %}
 
+    {% if settings.accepts_messages and not settings.messages_are_durable %}
+    <div class="form-error" role="note" style="border-left-color:var(--clay-600);color:var(--soil-600)">
+      This deployment stores messages on a temporary disk. They are kept until
+      the service next restarts or is redeployed, and are lost after that. If
+      your message matters, keep a copy.
+    </div>
+    {% endif %}
+
     {% if not settings.contact_configured %}
     <div class="form-error" role="note" style="border-left-color:var(--soil-400);color:var(--soil-600)">
       This deployment has no contact address configured. Messages sent from this

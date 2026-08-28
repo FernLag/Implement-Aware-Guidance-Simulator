@@ -1,14 +1,17 @@
-# Render blueprint. Free tier, no card required.
+# Render blueprint, free tier only.
 #
-# This is the closest match to how the application is written: a long lived
-# gunicorn process, so the in-memory rate limiter and signed sessions behave
-# as designed rather than resetting on every request.
+# VERIFIED AGAINST RENDER'S OWN DOCUMENTATION, not a third party summary:
+#   - "No credit card is required" to use the free tier.
+#   - 750 free instance hours per workspace per calendar month. A calendar
+#     month is about 730 hours, so one always-on service fits inside it.
+#   - Exceeding a limit SUSPENDS the service, it does not bill you. With no
+#     payment method on file, bandwidth and build overages also suspend
+#     rather than charge. Suspension is the only failure mode.
 #
-# Free tier trade-offs, stated plainly:
-#   - the service sleeps after 15 minutes idle, and the next request waits
-#     roughly 30 to 60 seconds for it to wake
-#   - the disk is ephemeral, so contact messages do not survive a redeploy
-#   - 750 instance hours per workspace per month
+# Nothing below can become a paid resource. There is deliberately no database
+# (Render's free Postgres expires after 30 days and is then deleted, which is
+# the one real trap in their free tier) and no persistent disk, which is a
+# paid add-on. This app needs neither.
 
 services:
   - type: web
@@ -16,7 +19,12 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt -r requirements-web.txt
-    startCommand: gunicorn -w 2 -t 60 -b 0.0.0.0:$PORT wsgi:app
+    # ONE worker, deliberately. The free instance has 512 MB of RAM and NumPy
+    # plus the catalog is loaded per worker, so a second one buys queueing at
+    # the cost of memory headroom. It also keeps the in-memory rate limiter
+    # exact: with two workers each keeps its own bucket and the effective
+    # limit doubles.
+    startCommand: gunicorn -w 1 -t 60 -b 0.0.0.0:$PORT wsgi:app
     healthCheckPath: /robots.txt
     envVars:
       - key: AGGSIM_SECRET_KEY
@@ -25,9 +33,13 @@ services:
         sync: false
       - key: PYTHON_VERSION
         value: "3.11.9"
-      # Two workers each hold their own token bucket, so the effective limit
-      # is twice this figure. Halved here so the total lands where intended.
+      # The free instance disk does not survive a redeploy. Declaring it here
+      # makes the contact page say so instead of accepting messages that are
+      # silently lost.
+      - key: AGGSIM_STORAGE_EPHEMERAL
+        value: "true"
+      # One worker, so these are the real numbers with no doubling.
       - key: AGGSIM_RATE_LIMIT_PER_MINUTE
-        value: "60"
+        value: "120"
       - key: AGGSIM_RATE_LIMIT_BURST
-        value: "20"
+        value: "40"
