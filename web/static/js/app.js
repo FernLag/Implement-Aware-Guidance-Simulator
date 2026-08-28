@@ -315,6 +315,7 @@
   /* ---------- 3D playback ---------- */
 
   var scene = null, sceneData = null, frame = 0, playing = false, rafId = null;
+  var terrain = null, fieldInfo = null;
   var reduceMotion = window.matchMedia
     && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -362,7 +363,7 @@
     if (!scene || !sceneData) { return; }
     var s = sceneData.series;
     frame = Math.max(0, Math.min(i, s.t.length - 1));
-    window.GuidanceScene.render(scene, sceneData, frame);
+    window.GuidanceScene.render(scene, sceneData, frame, terrain);
 
     document.getElementById("scene-clock").textContent = fmt(s.t[frame], 1) + " s";
     document.getElementById("scene-time").value = String(frame);
@@ -395,6 +396,68 @@
       drawFrame(next);
     }
     rafId = requestAnimationFrame(tick);
+  }
+
+  /* ---------- real field ---------- */
+
+  var fieldBtn = document.getElementById("read-field");
+  if (fieldBtn && window.GuidanceTerrain) {
+    document.querySelectorAll("[data-place]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        document.getElementById("latlon").value =
+          btn.getAttribute("data-place").replace(",", ", ");
+      });
+    });
+
+    fieldBtn.addEventListener("click", function () {
+      var note = document.getElementById("field-note");
+      var err = document.getElementById("latlon-error");
+      err.textContent = "";
+      note.classList.remove("is-error");
+
+      var here = window.GuidanceTerrain.parseLatLon(document.getElementById("latlon").value);
+      if (!here) {
+        err.textContent = "Enter a latitude and longitude, for example 42.03, -93.65.";
+        return;
+      }
+      var heading = parseFloat(document.getElementById("heading").value) || 0;
+
+      fieldBtn.setAttribute("aria-busy", "true");
+      fieldBtn.disabled = true;
+      note.textContent = "Reading elevation and imagery for that location.";
+
+      window.GuidanceTerrain.readField(here.lat, here.lon, heading)
+        .then(function (info) {
+          fieldInfo = info;
+          document.getElementById("slope_deg").value = info.side_slope_deg.toFixed(2);
+          note.textContent =
+            "Ground at " + info.elevation_m.toFixed(0) + " m. Driving on a heading of " +
+            heading + " degrees gives a side slope of " + info.side_slope_deg.toFixed(2) +
+            " degrees and " + Math.abs(info.along_slope_deg).toFixed(2) +
+            " degrees along the line. Sampled from " + info.samples +
+            " points at " + info.resolution_m + " m resolution. " + info.attribution + ".";
+          var travel = parseFloat(document.getElementById("speed").value || 3) * 60;
+          return window.GuidanceTerrain.loadImagery(here.lat, here.lon, travel);
+        })
+        .then(function (patch) {
+          terrain = { patch: patch, map: window.GuidanceTerrain.mapper(patch, heading) };
+          if (patch.tilesLoaded === 0) {
+            terrain = null;
+            document.getElementById("field-note").textContent +=
+              " No imagery tiles were available, so the ground stays plain.";
+          }
+          if (sceneData) { drawFrame(frame); }
+        })
+        .catch(function (e) {
+          note.classList.add("is-error");
+          note.textContent = e.message ||
+            "That location could not be read. USGS elevation covers the United States only.";
+        })
+        .then(function () {
+          fieldBtn.setAttribute("aria-busy", "false");
+          fieldBtn.disabled = false;
+        });
+    });
   }
 
   function attachSceneControls(canvas) {

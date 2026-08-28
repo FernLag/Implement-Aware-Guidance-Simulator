@@ -22,7 +22,7 @@ is. Nearly all published path-tracking work optimises tractor error.
 git clone https://github.com/FernLag/Implement-Aware-Guidance-Simulator.git
 cd Implement-Aware-Guidance-Simulator
 python3 -m pip install -r requirements.txt
-python3 -m pytest tests/ -q          # 249 tests, ~85 s
+python3 -m pytest tests/ -q          # 288 tests, ~90 s
 ```
 
 Requires Python 3.11+. Dependencies are NumPy, Matplotlib, PyYAML and pytest.
@@ -207,6 +207,19 @@ lays down tyre tracks, the worked swath, and the boundary lines where the two
 neighbouring passes should meet, so skip and overlap are visible directly
 rather than only as a number.
 
+**Real fields.** Enter a latitude and longitude in the United States and the
+simulator reads the actual ground slope there from USGS 3DEP elevation, sampled
+at 1 m resolution, and lays the USGS aerial photograph under the machine. The
+gradient is resolved along the guidance line and across it, because only the
+across component is the side slope the model uses: the same field driven north
+and driven east gives quite different numbers, which is the point.
+
+Those requests are made by the server, not by your browser, so the content
+security policy stays same-origin and no request goes from a visitor to a third
+party. Both services are free, need no key and no account, and are United
+States only. Outside coverage the tool says so rather than returning a slope of
+zero.
+
 Wheel diameters in that view are **derived from the catalogued tyre codes**,
 so a `480/80R50` rolls at its real 2.04 m. Track width, body size and hitch
 geometry are not published by any manufacturer in the catalog, are drawn to
@@ -337,7 +350,7 @@ aggsim/
     tuning.py       dual-objective gain search (Stage 6)
 scripts/          one demo script per stage, plus asset and audit tools
 web/              browser interface (Flask), separate from the simulation core
-tests/            249 tests
+tests/            288 tests
 ```
 
 ### Conventions

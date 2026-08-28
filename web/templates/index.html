@@ -98,6 +98,33 @@
         </div>
 
         <div class="field-group">
+          <h3>Real field</h3>
+          <p class="hint">Read the ground slope from USGS elevation data and put
+          the aerial photograph under the machine. United States coverage only.</p>
+          <p class="field">
+            <label for="latlon">Latitude, longitude</label>
+            <input type="text" id="latlon" name="latlon" value="42.0300, -93.6500"
+                   inputmode="decimal" aria-describedby="latlon-error latlon-hint">
+            <span class="hint" id="latlon-hint">Or pick one below.</span>
+            <span class="error" id="latlon-error" role="alert"></span>
+          </p>
+          <p class="field">
+            <label for="heading">Line heading <span class="unit">degrees from north</span></label>
+            <input type="number" id="heading" name="heading" value="90" min="0" max="359" step="1">
+          </p>
+          <div class="preset-row">
+            <button type="button" class="btn btn-quiet btn-sm" data-place="42.0300,-93.6500">Iowa</button>
+            <button type="button" class="btn btn-quiet btn-sm" data-place="46.7300,-117.1800">Palouse</button>
+            <button type="button" class="btn btn-quiet btn-sm" data-place="38.5000,-98.0000">Kansas</button>
+          </div>
+          <button type="button" class="btn btn-quiet btn-block" id="read-field">
+            <span class="btn-label">Read slope from this field</span>
+            <span class="spinner" aria-hidden="true"></span>
+          </button>
+          <p class="field-note" id="field-note" role="status" aria-live="polite"></p>
+        </div>
+
+        <div class="field-group">
           <h3>Controller</h3>
           <fieldset class="radio-set">
             <legend>Steering law</legend>
@@ -163,6 +190,10 @@
             implement has worked, so where it wanders away from the dashed
             guidance line is where skip and overlap come from.</p>
             <p class="scene-caveat" id="scene-caveat"></p>
+            <p class="attribution">Aerial imagery and elevation, when a real
+            field is loaded, are courtesy of the U.S. Geological Survey. They
+            are fetched by this server rather than by your browser, so no
+            request goes from you to a third party.</p>
           </figure>
 
           <figure class="chart-card">

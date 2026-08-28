@@ -35,14 +35,27 @@
     record addresses and requested pages according to how the operator has
     configured the hosting.</p>
 
+    <h2>Real field imagery and elevation</h2>
+    <p>If you ask the simulator to read a real field, this server requests
+    aerial imagery and elevation data from the U.S. Geological Survey on your
+    behalf. Your browser does not contact them: it asks this site, and this
+    site asks USGS. That means the coordinates you type reach USGS through this
+    server, but your network address, your browser and any identifier of you do
+    not.</p>
+    <p>The coordinates are not stored here. They are held only for the moment it
+    takes to answer the request, along with a short lived cache of the imagery
+    and elevation so that a repeated look at the same field does not ask USGS
+    again.</p>
+
     <h2>Third parties</h2>
     {% if settings.analytics_enabled and settings.analytics_script_url %}
     <p>This deployment loads an analytics script from
       {{ settings.analytics_script_url }}, but only after you choose yes.</p>
     {% else %}
-    <p>No third party script, font, stylesheet or image is loaded. Every asset on
-    this site is served from this server, which is enforced by the content
-    security policy the site sends with every page.</p>
+    <p>No third party script, font, stylesheet or image is loaded into your
+    browser. Every asset, including the aerial imagery described above, is
+    served from this server, which is enforced by the content security policy
+    the site sends with every page.</p>
     {% endif %}
 
     <h2>Your rights</h2>

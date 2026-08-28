@@ -45,3 +45,16 @@ class SimulationRequest(BaseModel):
         if not all(c.isalnum() or c in "_-." for c in value):
             raise ValueError("identifier may contain only letters, digits, _ - and .")
         return value
+
+
+class FieldRequest(BaseModel):
+    """A real location to read ground slope from."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lat: float = Field(ge=-90.0, le=90.0)
+    lon: float = Field(ge=-180.0, le=180.0)
+    heading_deg: float = Field(default=90.0, ge=0.0, lt=360.0)
+    # How far across the field the plane is fitted. Too small and it reads
+    # surface roughness; too large and it averages the field away.
+    extent_m: float = Field(default=60.0, ge=10.0, le=400.0)

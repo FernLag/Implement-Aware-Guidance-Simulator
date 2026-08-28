@@ -13,11 +13,14 @@ from flask import Flask, jsonify, render_template, request, url_for
 from pydantic import ValidationError
 
 from .config import Settings, load_settings
-from .schemas import SimulationRequest
+from .schemas import FieldRequest, SimulationRequest
 from .security import (
     RateLimiter, apply_security_headers, build_csp, too_many_requests,
 )
 from .simulation import SimulationError, catalog_payload, run_simulation
+from .terrain import (
+    ATTRIBUTION, TerrainError, fetch_tile, field_slope, tile_for, valid_tile,
+)
 
 log = logging.getLogger("aggsim.web")
 
@@ -53,6 +56,12 @@ def create_app(settings: Settings | None = None) -> Flask:
             return None
         scope = "api" if request.path.startswith("/api/") else "page"
         cost = 4.0 if request.path == "/api/simulate" else 1.0
+        if request.path.startswith("/api/tile/"):
+            # Tiles are small, cached, and a single view needs several, so they
+            # cost less than a simulation while still being counted.
+            scope, cost = "tile", 0.5
+        elif request.path == "/api/field":
+            cost = 3.0
         retry = limiter.check(scope, cost)
         if retry is not None:
             if request.path.startswith("/api/"):
@@ -141,6 +150,70 @@ def create_app(settings: Settings | None = None) -> Flask:
             return jsonify(run_simulation(req, settings.max_simulation_steps))
         except SimulationError as exc:
             return jsonify({"error": "cannot_simulate", "message": str(exc)}), 422
+
+    @app.get("/api/tile/<int:z>/<int:x>/<int:y>")
+    def api_tile(z, x, y):
+        """Proxy one USGS imagery tile.
+
+        Proxied rather than fetched by the browser so that img-src can stay
+        'self': from the visitor's side nothing leaves this origin.
+        """
+        # A coordinate the caller got wrong is their error, not the upstream's.
+        if not valid_tile(z, x, y):
+            return jsonify({"error": "bad_tile",
+                            "message": "Tile coordinates are out of range."}), 400
+        try:
+            blob = fetch_tile(z, x, y)
+        except TerrainError as exc:
+            return jsonify({"error": "tile_unavailable", "message": str(exc)}), 502
+        response = app.response_class(blob, mimetype="image/jpeg")
+        # Aerial imagery does not change, so let it cache hard. This is what
+        # keeps the load on a free public service reasonable.
+        response.headers["Cache-Control"] = "public, max-age=604800, immutable"
+        response.headers["X-Imagery-Attribution"] = ATTRIBUTION
+        return response
+
+    @app.post("/api/field")
+    def api_field():
+        if not request.is_json:
+            return jsonify({"error": "bad_request",
+                            "message": "Send application/json."}), 415
+        raw = request.get_json(silent=True)
+        if not isinstance(raw, dict):
+            return jsonify({"error": "bad_request",
+                            "message": "Body must be a JSON object."}), 400
+        try:
+            req = FieldRequest(**raw)
+        except ValidationError as exc:
+            return jsonify({
+                "error": "validation_failed",
+                "fields": [
+                    {"field": ".".join(str(p) for p in e["loc"]),
+                     "message": e["msg"].replace("Value error, ", "")}
+                    for e in exc.errors()
+                ],
+            }), 422
+        try:
+            slope = field_slope(req.lat, req.lon, req.heading_deg, req.extent_m)
+        except TerrainError as exc:
+            return jsonify({"error": "no_elevation", "message": str(exc)}), 502
+
+        zoom = 16
+        tx, ty = tile_for(req.lat, req.lon, zoom)
+        return jsonify({
+            "elevation_m": slope.elevation,
+            "side_slope_deg": slope.side_slope_deg,
+            "along_slope_deg": slope.along_slope_deg,
+            "total_slope_deg": slope.total_slope_deg,
+            "aspect_deg": slope.aspect_deg,
+            "downhill_is_right": slope.downhill_is_right,
+            "samples": slope.samples,
+            "resolution_m": slope.resolution,
+            "heading_deg": slope.heading_deg,
+            "extent_m": req.extent_m,
+            "tile": {"z": zoom, "x": tx, "y": ty},
+            "attribution": ATTRIBUTION,
+        })
 
     # ---- crawl surface ---------------------------------------------------
 

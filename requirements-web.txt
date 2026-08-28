@@ -11,3 +11,8 @@ Jinja2>=3.1,<4
 
 # Production server. The Flask development server must not face the internet.
 gunicorn>=21.2 ; sys_platform != "win32"
+
+# Supplies a root certificate bundle on installs that ship without one, which
+# is the case on python.org macOS builds. Used to VERIFY TLS to the USGS
+# services, never to skip verification.
+certifi>=2024.2.2

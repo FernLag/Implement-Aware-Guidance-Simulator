@@ -141,7 +141,66 @@
     return out;
   }
 
-  Scene.prototype.draw = function (faces, target) {
+  /* Paint a source triangle of the imagery onto a destination triangle.
+     Canvas 2D only does affine transforms, so the ground is subdivided and
+     each piece approximated. Small enough pieces and the perspective error
+     disappears. */
+  function texTriangle(ctx, img, s0, s1, s2, d0, d1, d2) {
+    var du1 = s1[0] - s0[0], dv1 = s1[1] - s0[1];
+    var du2 = s2[0] - s0[0], dv2 = s2[1] - s0[1];
+    var det = du1 * dv2 - du2 * dv1;
+    if (Math.abs(det) < 1e-9) { return; }
+    var dx1 = d1[0] - d0[0], dy1 = d1[1] - d0[1];
+    var dx2 = d2[0] - d0[0], dy2 = d2[1] - d0[1];
+    var a = (dx1 * dv2 - dx2 * dv1) / det;
+    var c = (du1 * dx2 - du2 * dx1) / det;
+    var b = (dy1 * dv2 - dy2 * dv1) / det;
+    var d = (du1 * dy2 - du2 * dy1) / det;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(d0[0], d0[1]);
+    ctx.lineTo(d1[0], d1[1]);
+    ctx.lineTo(d2[0], d2[1]);
+    ctx.closePath();
+    ctx.clip();
+    ctx.transform(a, b, c, d, d0[0] - a * s0[0] - c * s0[1], d0[1] - b * s0[0] - d * s0[1]);
+    ctx.drawImage(img, 0, 0);
+    ctx.restore();
+  }
+
+  /* The aerial photograph, drawn before everything else because it is the
+     ground plane and nothing can be under it. */
+  Scene.prototype.drawGround = function (ctx, terrain, b, focal, w, h, cx, tilt) {
+    var step = 6, halfY = 30, back = 40, fwd = 70;
+    var map = terrain.map, img = terrain.patch.canvas;
+    var maxU = img.width, maxV = img.height;
+
+    function screen(x, y) {
+      var p = place([x, y, 0], [0, 0], 0, tilt);
+      var v = sub(p, b.eye);
+      var z = dot(v, b.f);
+      if (z < NEAR) { return null; }
+      return [w / 2 + dot(v, b.r) * focal / z, h / 2 - dot(v, b.u) * focal / z];
+    }
+
+    for (var x = cx - back; x < cx + fwd; x += step) {
+      for (var y = -halfY; y < halfY; y += step) {
+        var s00 = map(x, y), s10 = map(x + step, y);
+        var s11 = map(x + step, y + step), s01 = map(x, y + step);
+        if (Math.min(s00[0], s10[0], s11[0], s01[0]) < 0 ||
+            Math.max(s00[0], s10[0], s11[0], s01[0]) > maxU ||
+            Math.min(s00[1], s10[1], s11[1], s01[1]) < 0 ||
+            Math.max(s00[1], s10[1], s11[1], s01[1]) > maxV) { continue; }
+        var d00 = screen(x, y), d10 = screen(x + step, y);
+        var d11 = screen(x + step, y + step), d01 = screen(x, y + step);
+        if (!d00 || !d10 || !d11 || !d01) { continue; }
+        texTriangle(ctx, img, s00, s10, s11, d00, d10, d11);
+        texTriangle(ctx, img, s00, s11, s01, d00, d11, d01);
+      }
+    }
+  };
+
+  Scene.prototype.draw = function (faces, target, terrain, cx, tilt) {
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
     var w = this.canvas.clientWidth, h = this.canvas.clientHeight;
     if (!w || !h) { return; }
@@ -156,6 +215,11 @@
 
     var b = this.basis(target);
     var focal = h * 0.86;
+
+    if (terrain && terrain.patch && terrain.map) {
+      this.drawGround(ctx, terrain, b, focal, w, h, cx, tilt);
+    }
+
     var list = [];
 
     for (var i = 0; i < faces.length; i++) {
@@ -422,22 +486,24 @@
 
   /* ---------------- ground ---------------- */
 
-  function buildGround(out, cx, tilt, width) {
+  function buildGround(out, cx, tilt, width, textured) {
     var half = 30, x0 = Math.floor((cx - half * 0.55) / 5) * 5;
     var x1 = x0 + half * 1.9;
     function g(x, y, z) { return place([x, y, z || 0], [0, 0], 0, tilt); }
 
-    for (var gx = x0; gx < x1; gx += 5) {
-      for (var gy = -half; gy < half; gy += 5) {
-        var band = Math.abs(gy) < (width || 0) / 2 ? COL.soilDark : COL.soil;
-        out.push({ p: [g(gx, gy), g(gx + 5, gy), g(gx + 5, gy + 5), g(gx, gy + 5)],
-                   c: band, k: 0.97 + ((gx + gy) % 10 === 0 ? 0.03 : 0), cull: false });
+    if (!textured) {
+      for (var gx = x0; gx < x1; gx += 5) {
+        for (var gy = -half; gy < half; gy += 5) {
+          var band = Math.abs(gy) < (width || 0) / 2 ? COL.soilDark : COL.soil;
+          out.push({ p: [g(gx, gy), g(gx + 5, gy), g(gx + 5, gy + 5), g(gx, gy + 5)],
+                     c: band, k: 0.97 + ((gx + gy) % 10 === 0 ? 0.03 : 0), cull: false });
+        }
       }
-    }
-    // Drill rows, for a sense of scale and direction of travel.
-    for (var ry = -half; ry <= half; ry += 0.76) {
-      out.push({ p: [g(x0, ry, 0.012), g(x1, ry, 0.012)], line: true,
-                 stroke: "rgba(120,100,72,0.16)", width: 1 });
+      // Drill rows, for a sense of scale and direction of travel.
+      for (var ry = -half; ry <= half; ry += 0.76) {
+        out.push({ p: [g(x0, ry, 0.012), g(x1, ry, 0.012)], line: true,
+                   stroke: "rgba(120,100,72,0.16)", width: 1 });
+      }
     }
     // The guidance line, dashed.
     for (var dx = x0; dx < x1; dx += 2.4) {
@@ -499,7 +565,7 @@
 
   window.GuidanceScene = {
     create: function (canvas) { return new Scene(canvas); },
-    render: function (scene, data, frame) {
+    render: function (scene, data, frame, terrain) {
       var s = data.series, g = data.scene.machine;
       var tilt = (data.scene.slope_deg || 0) * Math.PI / 180 * (data.scene.slope_sign || 1);
       var faces = [];
@@ -511,7 +577,8 @@
         thetaImplement: s.theta_implement ? s.theta_implement[frame] : s.theta[frame]
       };
 
-      buildGround(faces, pose.x, tilt, im ? im.working_width.value : 0);
+      var textured = !!(terrain && terrain.patch && terrain.map);
+      buildGround(faces, pose.x, tilt, im ? im.working_width.value : 0, textured);
       if (im) {
         buildSwath(faces, s, frame, tilt, im.hitch_distance.value,
           im.implement_wheelbase.value, im.working_width.value / 2);
@@ -534,7 +601,7 @@
       var back = im ? (im.hitch_distance.value + im.implement_wheelbase.value) * 0.5 : 0;
       var target = place([pose.x - back * Math.cos(pose.theta),
                           pose.y - back * Math.sin(pose.theta), 1.4], [0, 0], 0, tilt);
-      scene.draw(faces, target);
+      scene.draw(faces, target, terrain, pose.x, tilt);
       return pose;
     }
   };

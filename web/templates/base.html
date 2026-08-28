@@ -104,6 +104,8 @@
     model numbers are the trademarks of their respective manufacturers and are
     used here only to identify the machines whose published specifications the
     catalog cites.</p>
+    <p>Aerial imagery and elevation data, where shown, are courtesy of the
+    U.S. Geological Survey and are in the public domain.</p>
     <p>Figures produced by this tool are simulation output from a kinematic
     model. They are not a substitute for field measurement and must not be used
     as the sole basis for machinery, agronomic or safety decisions.</p>
@@ -129,6 +131,7 @@
 </div>
 {% endif %}
 
+<script src="{{ url_for('static', filename='js/terrain.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/scene3d.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
 {% block scripts %}{% endblock %}
