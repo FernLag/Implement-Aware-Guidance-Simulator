@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow">Agricultural autosteer, measured twice</p>
+      <h1>The tractor is on the line.<br>The implement is not.</h1>
+      <p class="lede">Coverage quality depends on where the working edge of the
+      implement sits, not on where the tractor sits. This simulator runs both
+      at once so you can watch the two measurements separate.</p>
+
+      <div class="hero-actions">
+        <a class="btn btn-primary btn-lg" href="#simulator">Run a pass</a>
+        <a class="btn btn-quiet btn-lg" href="{{ url_for('method') }}">Read the method</a>
+      </div>
+
+      <dl class="hero-facts">
+        <div><dt>Machines</dt><dd>18 tractors, 21 implements</dd></div>
+        <div><dt>Every parameter</dt><dd>Sourced or flagged</dd></div>
+        <div><dt>Model</dt><dd>Kinematic, checked against closed forms</dd></div>
+      </dl>
+    </div>
+
+    <figure class="hero-figure">
+      <svg viewBox="0 0 420 260" role="img"
+           aria-label="Diagram of a field pass. A dashed guidance line runs straight across. The tractor track follows it closely. The implement edge track sits further away from the line and stays there, showing a persistent offset on a side slope.">
+        <rect width="420" height="260" fill="#EFE6D0"/>
+        <g stroke="#D6C9AA" stroke-width="1">
+          <path d="M0 40 H420 M0 80 H420 M0 120 H420 M0 160 H420 M0 200 H420 M0 240 H420"/>
+        </g>
+        <path d="M20 110 H400" stroke="#33291D" stroke-width="2" stroke-dasharray="8 6"/>
+        <path d="M20 175 C90 175, 130 116, 400 113" stroke="#4C5A3A" stroke-width="3.5" fill="none"/>
+        <path d="M20 205 C110 205, 150 152, 400 148" stroke="#A35A32" stroke-width="3.5" fill="none"/>
+        <g font-size="12" font-family="Georgia, serif" fill="#33291D">
+          <text x="300" y="102">guidance line</text>
+          <text x="300" y="132" fill="#4C5A3A">tractor</text>
+          <text x="300" y="168" fill="#A35A32">implement edge</text>
+        </g>
+        <path d="M404 113 V148" stroke="#33291D" stroke-width="1"/>
+        <text x="356" y="196" font-size="11" font-family="Georgia, serif" fill="#33291D">the gap that matters</text>
+      </svg>
+      <figcaption>A ten degree side slope. Both tracks settle, but not in the
+      same place, and only one of them is what the crop sees.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="band" id="simulator" aria-labelledby="sim-heading">
+  <div class="wrap">
+    <h2 id="sim-heading" class="section-heading">Set up a pass</h2>
+    <p class="section-intro">Choose a machine, a field condition and a controller.
+    The run starts with the tractor off the line, the way a pass begins after a
+    headland turn.</p>
+
+    <div class="sim-layout">
+      <form class="sim-form" id="sim-form" novalidate>
+        <div class="field-group">
+          <h3>Machine</h3>
+          <p class="field">
+            <label for="tractor">Tractor</label>
+            <select id="tractor" name="tractor" required></select>
+            <span class="hint" id="tractor-hint"></span>
+          </p>
+          <p class="field">
+            <label for="implement">Implement</label>
+            <select id="implement" name="implement"></select>
+            <span class="hint" id="implement-hint">Leave unset to measure the tractor alone.</span>
+          </p>
+        </div>
+
+        <div class="field-group">
+          <h3>Field</h3>
+          <p class="field">
+            <label for="speed">Speed <span class="unit">metres per second</span></label>
+            <input type="number" id="speed" name="speed" value="3" min="0.5" max="15" step="0.1" required
+                   aria-describedby="speed-error">
+            <span class="error" id="speed-error" role="alert"></span>
+          </p>
+          <p class="field">
+            <label for="slope_deg">Side slope <span class="unit">degrees</span></label>
+            <input type="number" id="slope_deg" name="slope_deg" value="10" min="0" max="25" step="0.5"
+                   aria-describedby="slope_deg-error">
+            <span class="error" id="slope_deg-error" role="alert"></span>
+          </p>
+          <p class="field">
+            <label for="slip">Wheel slip <span class="unit">fraction of travel lost</span></label>
+            <input type="number" id="slip" name="slip" value="0.12" min="0" max="0.5" step="0.005"
+                   aria-describedby="slip-error">
+            <span class="error" id="slip-error" role="alert"></span>
+          </p>
+          <p class="field">
+            <label for="initial_offset">Starting offset <span class="unit">metres from the line</span></label>
+            <input type="number" id="initial_offset" name="initial_offset" value="3" min="-10" max="10" step="0.5"
+                   aria-describedby="initial_offset-error">
+            <span class="error" id="initial_offset-error" role="alert"></span>
+          </p>
+        </div>
+
+        <div class="field-group">
+          <h3>Controller</h3>
+          <fieldset class="radio-set">
+            <legend>Steering law</legend>
+            <label class="radio"><input type="radio" name="controller" value="pure_pursuit" checked> Pure pursuit</label>
+            <label class="radio"><input type="radio" name="controller" value="stanley"> Stanley</label>
+          </fieldset>
+          <p class="field" data-for="pure_pursuit">
+            <label for="lookahead_gain">Lookahead gain k <span class="unit">seconds</span></label>
+            <input type="number" id="lookahead_gain" name="lookahead_gain" value="0.5" min="0" max="3" step="0.05"
+                   aria-describedby="lookahead_gain-error">
+            <span class="error" id="lookahead_gain-error" role="alert"></span>
+          </p>
+          <p class="field" data-for="stanley" hidden>
+            <label for="stanley_gain">Cross-track gain k<sub>e</sub></label>
+            <input type="number" id="stanley_gain" name="stanley_gain" value="2" min="0.1" max="50" step="0.1"
+                   aria-describedby="stanley_gain-error">
+            <span class="error" id="stanley_gain-error" role="alert"></span>
+          </p>
+          <p class="field checkbox">
+            <label><input type="checkbox" id="actuator" name="actuator" checked>
+            Include steering actuator lag and slew limit</label>
+          </p>
+        </div>
+
+        <div class="form-error" id="form-error" role="alert" hidden></div>
+
+        <button type="submit" class="btn btn-primary btn-block" id="run-btn">
+          <span class="btn-label">Run the pass</span>
+          <span class="spinner" aria-hidden="true"></span>
+        </button>
+      </form>
+
+      <div class="sim-results">
+        <div class="results-status" id="results-status" role="status" aria-live="polite">
+          Set your options and run a pass. Results appear here.
+        </div>
+
+        <div id="results" hidden>
+          <figure class="chart-card">
+            <figcaption id="chart-caption">Cross-track error against time</figcaption>
+            <div class="chart-holder" id="chart" role="img" aria-labelledby="chart-caption" aria-describedby="chart-summary"></div>
+            <p class="chart-summary" id="chart-summary"></p>
+            <ul class="legend" id="legend"></ul>
+          </figure>
+
+          <div class="metrics" id="metrics"></div>
+
+          <details class="data-details">
+            <summary>View the numbers as a table</summary>
+            <div class="table-scroll">
+              <table id="data-table">
+                <caption>Sampled simulation output</caption>
+                <thead><tr id="data-head"></tr></thead>
+                <tbody id="data-body"></tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band band-alt" aria-labelledby="read-heading">
+  <div class="wrap">
+    <h2 id="read-heading" class="section-heading">What to look for</h2>
+    <div class="notes-grid">
+      <article class="note">
+        <h3>On flat ground both return to zero</h3>
+        <p>Start the tractor three metres off the line with no slope. Tractor and
+        implement both come back. The implement takes longer because a trailed
+        implement lags the tractor through the correction.</p>
+      </article>
+      <article class="note">
+        <h3>On a slope neither returns</h3>
+        <p>Add ten degrees of side slope. Pure pursuit settles at a fixed offset
+        and stays there. The implement settles further out still, and the gap
+        between the two does not close.</p>
+      </article>
+      <article class="note">
+        <h3>Stanley moves the tractor, not the implement</h3>
+        <p>Switch controller and raise the cross-track gain. Tractor error falls
+        sharply. Implement edge error falls by much less, because the crab angle
+        that displaces the implement is set by the slope, not by the controller.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<div class="sticky-cta" aria-hidden="false">
+  <a class="btn btn-primary btn-block" href="#simulator">Run a pass</a>
+</div>
+{% endblock %}

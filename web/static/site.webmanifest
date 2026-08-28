@@ -1,0 +1,14 @@
+{
+  "name": "Implement-Aware Guidance Simulator",
+  "short_name": "Guidance Sim",
+  "description": "Simulate how a tractor and its implement track a straight AB line, and see where the two measurements disagree.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F6F1E7",
+  "theme_color": "#33291D",
+  "icons": [
+    { "src": "/static/img/favicon-32.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "/static/img/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/static/img/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

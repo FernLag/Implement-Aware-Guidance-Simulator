@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" role="img" aria-label="Implement-Aware Guidance Simulator">
+  <rect width="40" height="40" fill="#33291D"/>
+  <path d="M4 14 H36" stroke="#D8C79F" stroke-width="3"/>
+  <path d="M4 25 C14 25, 18 29, 36 29" stroke="#C2703F" stroke-width="3" fill="none"/>
+  <circle cx="12" cy="14" r="3.4" fill="#8FA06B"/>
+</svg>

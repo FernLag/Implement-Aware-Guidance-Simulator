@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="prose">
+  <div class="wrap" style="max-width:min(720px,92vw)">
+    <p class="eyebrow">Error 404</p>
+    <h1>This page is off the line</h1>
+    <p class="lede">The address you followed does not match anything here. It may
+    have been renamed, or the link may have been mistyped.</p>
+    <figure style="margin:0 0 2rem">
+      <svg viewBox="0 0 420 150" role="img" aria-label="A guidance line running straight across, with a second track that veers away and stops short of the edge.">
+        <rect width="420" height="150" fill="#EFE6D0"/>
+        <path d="M20 70 H400" stroke="#33291D" stroke-width="2" stroke-dasharray="8 6"/>
+        <path d="M20 70 C120 70, 150 128, 250 132" stroke="#A35A32" stroke-width="3.5" fill="none"/>
+        <circle cx="250" cy="132" r="5" fill="#A35A32"/>
+      </svg>
+    </figure>
+    <p>
+      <a class="btn btn-primary" href="{{ url_for('index') }}">Back to the simulator</a>
+      <a class="btn btn-quiet" href="{{ url_for('catalog') }}">Browse the catalog</a>
+    </p>
+  </div>
+</section>
+{% endblock %}

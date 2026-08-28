@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="prose">
+  <div class="wrap" style="max-width:min(680px,92vw)">
+    <h1>Message received</h1>
+    <p class="lede">Your message has been stored. Thank you for taking the time
+    to write.</p>
+    <p>{% if settings.contact_email %}A reply will come from
+      {{ settings.contact_email }}.{% else %}This deployment has no contact
+      address configured, so the message has been recorded on the server for the
+      operator to read. No email has been sent.{% endif %}</p>
+    <p><a class="btn btn-primary" href="{{ url_for('index') }}">Back to the simulator</a></p>
+  </div>
+</section>
+{% endblock %}

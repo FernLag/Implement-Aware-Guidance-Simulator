@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="prose">
+  <div class="wrap" style="max-width:min(720px,92vw)">
+    <h1>Contact</h1>
+    <p class="lede">Questions about the model, the equipment catalog or the
+    results are welcome.</p>
+
+    {% if not settings.contact_configured %}
+    <div class="form-error" role="note" style="border-left-color:var(--soil-400);color:var(--soil-600)">
+      This deployment has no contact address configured. Messages sent from this
+      form are written to a file on the server and are not emailed to anyone.
+      The operator sets a real address through the AGGSIM_CONTACT_EMAIL and
+      AGGSIM_CONTACT_ADDRESS environment variables.
+    </div>
+    {% endif %}
+
+    {% if errors._form %}
+    <div class="form-error" role="alert">{{ errors._form }}</div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('contact_submit') }}" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <p class="field">
+        <label for="name">Your name</label>
+        <input type="text" id="name" name="name" maxlength="120" required
+               value="{{ values.name|default('') }}"
+               {% if errors.name %}aria-invalid="true"{% endif %}
+               aria-describedby="name-error">
+        <span class="error" id="name-error" role="alert">{{ errors.name|default('') }}</span>
+      </p>
+
+      <p class="field">
+        <label for="email">Email address</label>
+        <input type="email" id="email" name="email" maxlength="254" required
+               value="{{ values.email|default('') }}"
+               {% if errors.email %}aria-invalid="true"{% endif %}
+               aria-describedby="email-error">
+        <span class="error" id="email-error" role="alert">{{ errors.email|default('') }}</span>
+      </p>
+
+      <p class="field">
+        <label for="message">Message</label>
+        <textarea id="message" name="message" maxlength="4000" required
+                  {% if errors.message %}aria-invalid="true"{% endif %}
+                  aria-describedby="message-error message-hint">{{ values.message|default('') }}</textarea>
+        <span class="hint" id="message-hint">Ten characters or more, up to four thousand.</span>
+        <span class="error" id="message-error" role="alert">{{ errors.message|default('') }}</span>
+      </p>
+
+      <div aria-hidden="true" style="position:absolute;left:-9999px">
+        <label for="website">Leave this field empty</label>
+        <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+      </div>
+
+      <p>By sending this form you agree that your name, email address and message
+      are stored on the server so the operator can reply. See the
+      <a href="{{ url_for('privacy') }}">privacy page</a>.</p>
+
+      <button type="submit" class="btn btn-primary">Send message</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

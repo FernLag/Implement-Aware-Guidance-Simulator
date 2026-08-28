@@ -1,0 +1,13 @@
+# Web interface only. The simulation core in aggsim/ needs none of this and
+# still runs with NumPy, Matplotlib and PyYAML alone, as the project
+# constraints require.
+#
+# Pin these before deploying, then scan the pinned set:
+#   pip-audit -r requirements-web.txt
+
+Flask>=3.0,<4
+pydantic>=2.5,<3
+Jinja2>=3.1,<4
+
+# Production server. The Flask development server must not face the internet.
+gunicorn>=21.2 ; sys_platform != "win32"

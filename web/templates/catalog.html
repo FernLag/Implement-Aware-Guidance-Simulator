@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="band">
+  <div class="wrap">
+    <h1>Equipment catalog</h1>
+    <p class="lede">Every physical value carries either a link to the published
+    source it came from, or a flag marking it as an assumption together with the
+    reasoning behind it. A value with neither cannot be loaded: the catalog
+    refuses to construct it.</p>
+
+    <p><strong>{{ data.tractors|length }} tractors</strong> and
+    <strong>{{ data.implements|length }} implements</strong>, with
+    <strong>{{ data.assumed|length }} assumed parameters</strong> listed in full
+    at the foot of this page.</p>
+
+    <h2>Tractors</h2>
+    <div class="table-scroll">
+      <table class="catalog-table">
+        <caption>Tractors, ordered by wheelbase. Wheelbase is the length the vehicle model uses directly.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Machine</th><th scope="col">Years</th>
+            <th scope="col">Wheelbase (m)</th><th scope="col">Engine (kW)</th>
+            <th scope="col">Drawbar (kW)</th><th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for t in data.tractors %}
+          <tr>
+            <th scope="row">{{ t.name }}</th>
+            <td>{{ t.years }}</td>
+            <td>{{ "%.3f"|format(t.wheelbase.value) }}
+              {% if t.wheelbase.assumed %}<span class="tag is-assumed">assumed</span>{% endif %}</td>
+            <td>{{ "%.1f"|format(t.engine_power.value / 1000) }}</td>
+            <td>{{ "%.1f"|format(t.drawbar_power.value / 1000) }}
+              {% if t.drawbar_power.assumed %}<span class="tag is-assumed">assumed</span>{% endif %}</td>
+            <td>{% if t.simulatable %}<span class="tag">simulatable</span>
+                {% else %}<span class="tag is-blocked">articulated</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p>Machines marked articulated steer by pivoting a joint between two frame
+    halves. The kinematic bicycle model used here steers by a front wheel angle
+    and cannot represent that, so the simulator refuses them rather than
+    returning numbers that would look reasonable and mean nothing.</p>
+
+    <h2>Implements</h2>
+    <div class="table-scroll">
+      <table class="catalog-table">
+        <caption>Implements, ordered by working width. Width is the main variable in the tuning comparison.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Implement</th><th scope="col">Type</th>
+            <th scope="col">Working width (m)</th><th scope="col">Mass (kg)</th>
+            <th scope="col">Hitch to axle (m)</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for i in data.implements %}
+          <tr>
+            <th scope="row">{{ i.name }}</th>
+            <td>{{ i.type }}</td>
+            <td>{{ "%.3f"|format(i.working_width.value) }}
+              {% if i.working_width.assumed %}<span class="tag is-assumed">assumed</span>{% endif %}</td>
+            <td>{{ "%.0f"|format(i.mass.value) }}
+              {% if i.mass.assumed %}<span class="tag is-assumed">assumed</span>{% endif %}</td>
+            <td>{% if i.implement_wheelbase %}{{ "%.2f"|format(i.implement_wheelbase.value) }}
+                <span class="tag is-assumed">assumed</span>{% else %}not applicable{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Every assumption, in full</h2>
+    <p>These values are not measurements. They are printed here, and by the
+    command line tools, so that no result rests on a number whose origin is
+    hidden.</p>
+    <div class="table-scroll">
+      <table class="catalog-table">
+        <caption>Assumed parameters and the reasoning recorded for each</caption>
+        <thead><tr><th scope="col">Entry</th><th scope="col">Parameter</th>
+          <th scope="col">Value</th><th scope="col">Why this value</th></tr></thead>
+        <tbody>
+        {% for a in data.assumed %}
+          <tr>
+            <th scope="row">{{ a.entry }}</th>
+            <td>{{ a.field }}</td>
+            <td>{{ a.value }} {{ a.unit }}</td>
+            <td style="text-align:left">{{ a.rationale }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

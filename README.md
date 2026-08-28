@@ -22,7 +22,7 @@ all published path-tracking work optimises tractor error.
 git clone https://github.com/FernLag/Implement-Aware-Guidance-Simulator.git
 cd Implement-Aware-Guidance-Simulator
 python3 -m pip install -r requirements.txt
-python3 -m pytest tests/ -q          # 167 tests, ~80 s
+python3 -m pytest tests/ -q          # 230 tests, ~85 s
 ```
 
 Requires Python 3.11+. Dependencies are NumPy, Matplotlib, PyYAML and pytest —
@@ -177,6 +177,62 @@ Three results that were not expected going in, each documented where it lives:
 
 ---
 
+## Web interface
+
+A browser interface for running single passes without the command line.
+
+```bash
+python3 -m pip install -r requirements-web.txt
+cp .env.example .env          # then set AGGSIM_SECRET_KEY
+python3 wsgi.py               # http://127.0.0.1:5000
+```
+
+Pick a tractor and implement from the catalog, set speed, side slope, slip and
+controller, and the page charts tractor cross-track error against implement
+edge error on the same axes. Results include skip between adjacent passes as a
+percentage of working width, so the output carries an agronomic unit and not
+only a control one.
+
+For a public deployment use a real server behind TLS:
+
+```bash
+AGGSIM_SECRET_KEY=$(python3 -c "import secrets;print(secrets.token_urlsafe(48))")   gunicorn -w 4 wsgi:app
+```
+
+### Security posture
+
+```bash
+python3 scripts/security_audit.py     # 17 checks, re-runnable
+```
+
+Built in rather than added afterwards: every request field is bounded and
+unknown fields are rejected outright; bodies are size limited; simulation cost
+is capped by total integration steps, because one long request can cost more
+than thousands of page views; every endpoint is rate limited while static
+assets are exempt; the contact form carries a CSRF token compared in constant
+time; and the Content Security Policy is same origin with no `unsafe-inline`,
+which is possible because the page loads no external script, style or font.
+
+No credential appears in this repository. Everything sensitive comes from the
+environment, and `.env` is git ignored. The audit reports six accepted
+limitations rather than hiding them, the most important being that the rate
+limiter is per process and keys on the socket address, so a public deployment
+behind a proxy needs `ProxyFix` and an edge limiter.
+
+### Two things this deployment does not invent
+
+**Contact details.** There is no address in the code. Unset, the contact page,
+privacy page and footer say so plainly instead of showing a placeholder that
+could be mistaken for real.
+
+**A cookie banner with nothing behind it.** Analytics is off by default, and
+with it off the site sets no analytics cookie and shows no banner. Switch
+analytics on and a real yes or no choice appears, with nothing stored until it
+is answered. One strictly necessary session cookie carries the contact form
+CSRF token, and the privacy page documents it.
+
+---
+
 ## Project rules
 
 Two rules shape most of the design.
@@ -246,8 +302,9 @@ aggsim/
     oscillation.py  settling and damping detection (Stage 2)
     coverage.py     skip and overlap between passes (Stage 6)
     tuning.py       dual-objective gain search (Stage 6)
-scripts/          one demo script per stage
-tests/            167 tests
+scripts/          one demo script per stage, plus asset and audit tools
+web/              browser interface (Flask), separate from the simulation core
+tests/            230 tests
 ```
 
 ### Conventions

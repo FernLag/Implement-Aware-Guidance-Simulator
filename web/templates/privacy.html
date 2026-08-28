@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="prose">
+  <div class="wrap">
+    <h1>Privacy</h1>
+    <p class="lede">This page describes what this deployment actually does with
+    data, written against the running configuration rather than as boilerplate.</p>
+
+    <h2>Cookies</h2>
+    {% if settings.sets_cookies %}
+    <p>Analytics is switched on for this deployment. Before anything is stored
+    you are asked to choose yes or no, and the choice is remembered in your
+    browser. Declining leaves the simulator working exactly as it does when you
+    accept.</p>
+    {% else %}
+    <p>Analytics is switched off for this deployment, and no analytics or
+    advertising cookie is set. There is no consent banner because there is
+    nothing to consent to.</p>
+    {% endif %}
+    <p>One cookie is used when you submit the contact form. It holds a signed
+    session value whose only purpose is to carry the token that proves the form
+    was submitted from this site and not from another. It is strictly necessary
+    for that security function, contains no identifier for you, and is not used
+    for measurement or advertising.</p>
+
+    <h2>The simulator</h2>
+    <p>Running a pass sends your chosen settings to the server, which computes
+    the result and returns it. Nothing about a simulation run is stored. The
+    settings are numbers describing a machine and a field condition and are not
+    linked to you.</p>
+
+    <h2>Server logs and rate limiting</h2>
+    <p>Your network address is held in memory for a short period so that
+    requests can be counted and abusive traffic slowed down. Entries that have
+    been idle for fifteen minutes are discarded. Standard web server logs may
+    record addresses and requested pages according to how the operator has
+    configured the hosting.</p>
+
+    <h2>The contact form</h2>
+    <p>If you use the contact form, the name, email address and message you type
+    are written to a file on the server so the operator can read and reply. They
+    are not sold, shared with advertisers, or used for any other purpose. Ask
+    the operator to delete them at any time.</p>
+
+    <h2>Third parties</h2>
+    {% if settings.analytics_enabled and settings.analytics_script_url %}
+    <p>This deployment loads an analytics script from
+      {{ settings.analytics_script_url }}, but only after you choose yes.</p>
+    {% else %}
+    <p>No third party script, font, stylesheet or image is loaded. Every asset on
+    this site is served from this server, which is enforced by the content
+    security policy the site sends with every page.</p>
+    {% endif %}
+
+    <h2>Your rights</h2>
+    <p>Where data protection law such as the UK GDPR or the EU GDPR applies, you
+    have the right to ask what is held about you, to have it corrected or
+    erased, and to complain to your supervisory authority. Requests go to the
+    operator using the details in the footer.</p>
+
+    {% if not settings.contact_configured %}
+    <p><strong>This deployment has no contact details configured</strong>, so
+    there is currently no published route for such a request. That is a
+    configuration gap, and it is stated here rather than concealed.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

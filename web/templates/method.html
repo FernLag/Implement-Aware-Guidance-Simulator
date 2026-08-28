@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="prose">
+  <div class="wrap">
+    <h1>How the model works</h1>
+    <p class="lede">A kinematic model, written by hand, checked against closed
+    form solutions wherever one exists. This page states what it represents and,
+    just as importantly, what it does not.</p>
+
+    <h2>The vehicle</h2>
+    <p>State is the position and heading of the rear axle. That reference point
+    is what makes the equations exact rather than approximate: with no slip, the
+    rear wheel has no lateral velocity, so the velocity vector lies along the
+    heading.</p>
+    <pre class="formula">x' = v cos(theta)
+y' = v sin(theta)
+theta' = (v / L) tan(delta)</pre>
+    <p>Integration is fourth order Runge Kutta at a fixed timestep, with the
+    steering command held constant across each step, which is what a real
+    digital controller does. A test confirms that a constant steering angle
+    traces a circle of radius L divided by tan of that angle, to within a
+    millionth of a metre over two thousand steps.</p>
+
+    <h2>The steering actuator</h2>
+    <p>The controller emits a commanded angle. The wheels follow it through a
+    first order lag with a slew rate limit, so the steering angle becomes a
+    state of its own.</p>
+    <pre class="formula">delta' = clamp((delta_cmd - delta) / tau, -rate, +rate)</pre>
+    <p>Both the time constant and the slew rate are assumptions. No manufacturer
+    publishes them. Because the stability conclusions depend heavily on the time
+    constant, the command line tools sweep it and report the sensitivity rather
+    than quoting a single figure.</p>
+
+    <h2>Terrain</h2>
+    <p>Side slope adds a lateral drift velocity perpendicular to the heading.
+    The brief for this project describes that drift as proportional to g times
+    sine of the slope angle, which is an acceleration, so the constant of
+    proportionality carries units of seconds and is itself an assumption.</p>
+    <p>Wheel slip scales forward velocity by one minus the slip fraction, and the
+    yaw equation uses that same reduced velocity, because turning follows actual
+    travel rather than wheel rotation. Slip values by soil surface come from
+    published extension guidance on ballasting.</p>
+
+    <h2>The implement, and the second measurement</h2>
+    <p>A trailed implement adds hitch angle as a further state, driven by the
+    rolling constraint at its axle.</p>
+    <pre class="formula">theta_i' = (1/b) [ v sin(theta - theta_i)
+                 + (v_d - a theta') cos(theta - theta_i)
+                 - v_d_implement ]</pre>
+    <p>The working edge error is measured against plus or minus half the working
+    width, not against the guidance line. Measuring it against the line would
+    report a perfectly placed wide implement as being half its own width out.</p>
+
+    <h2>What the results are checked against</h2>
+    <p>Where a closed form exists, the simulation is compared with it rather than
+    with its own earlier output. On a side slope, pure pursuit settles at</p>
+    <pre class="formula">e_ss = L_d v_d / sqrt(v_eff^2 + v_d^2)</pre>
+    <p>and the simulation agrees to within about three parts in ten thousand
+    billion. That expression contains no wheelbase term, and the simulation
+    accordingly returns the same offset for every tractor in the catalog.</p>
+
+    <h2>What this model does not represent</h2>
+    <ul>
+      <li>Tyre forces, weight transfer and load. The model is kinematic, so it
+      has no notion of grip running out.</li>
+      <li>Articulated steering. Machines that pivot at a frame joint are held in
+      the catalog but refused by the simulator.</li>
+      <li>Implement draft forces and ground contact, beyond a single figure used
+      to check whether a pairing is feasible at all.</li>
+      <li>Headland turns. Every run here is a straight AB line.</li>
+    </ul>
+    <p><a href="{{ url_for('index') }}">Return to the simulator</a></p>
+  </div>
+</section>
+{% endblock %}

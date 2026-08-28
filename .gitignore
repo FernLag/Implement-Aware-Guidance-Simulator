@@ -108,3 +108,11 @@ checkpoints/
 *.ckpt
 *.h5
 *.pkl
+
+# ---- web interface ----
+.env
+.env.*
+!.env.example
+instance/
+web/instance/
+*.jsonl

@@ -1,0 +1,372 @@
+"""Web interface tests, including the security properties.
+
+These check behaviour that is easy to regress silently: a header that stops
+being sent, a validation bound that gets widened, a template that starts
+loading something from another origin.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from web.app import create_app
+from web.config import load_settings
+
+REPO = Path(__file__).resolve().parent.parent
+PAGES = ["/", "/catalog", "/method", "/contact", "/privacy", "/terms", "/thank-you"]
+
+
+@pytest.fixture(scope="module")
+def app():
+    # The rate limiter is per application, so a shared one would make the
+    # rest of the suite fail with 429 in a way that says nothing about the
+    # code under test. Limiting behaviour gets its own apps below.
+    settings = replace(load_settings(), secret_key="test-key-not-a-real-secret",
+                       secret_key_is_ephemeral=False,
+                       rate_limit_per_minute=6000, rate_limit_burst=500)
+    application = create_app(settings)
+    application.config.update(TESTING=True)
+    return application
+
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
+
+
+# --- pages -----------------------------------------------------------------
+
+@pytest.mark.parametrize("path", PAGES)
+def test_page_renders(client, path):
+    assert client.get(path).status_code == 200
+
+
+@pytest.mark.parametrize("path", PAGES)
+def test_every_page_has_its_own_title_and_description(client, path):
+    html = client.get(path).get_data(as_text=True)
+    title = re.search(r"<title>(.*?)</title>", html, re.S)
+    desc = re.search(r'<meta name="description" content="(.*?)"', html, re.S)
+    assert title and title.group(1).strip()
+    assert desc and len(desc.group(1).strip()) > 40
+
+
+def test_titles_are_distinct_across_pages(client):
+    titles = {re.search(r"<title>(.*?)</title>", client.get(p).get_data(as_text=True), re.S).group(1)
+              for p in PAGES}
+    assert len(titles) == len(PAGES)
+
+
+@pytest.mark.parametrize("path", PAGES)
+def test_open_graph_and_canonical_present(client, path):
+    html = client.get(path).get_data(as_text=True)
+    for needle in ('property="og:title"', 'property="og:image"',
+                   'property="og:description"', 'rel="canonical"'):
+        assert needle in html, f"{path} missing {needle}"
+
+
+def test_custom_404_page(client):
+    response = client.get("/no-such-page")
+    assert response.status_code == 404
+    body = response.get_data(as_text=True)
+    assert "off the line" in body
+    assert "Back to the simulator" in body
+
+
+def test_favicon_and_manifest_are_served(client):
+    for path in ["/static/img/favicon.svg", "/static/img/favicon-32.png",
+                 "/static/img/apple-touch-icon.png", "/static/img/og-image.png",
+                 "/static/site.webmanifest"]:
+        assert client.get(path).status_code == 200, path
+
+
+def test_robots_and_sitemap(client):
+    robots = client.get("/robots.txt").get_data(as_text=True)
+    assert "Sitemap:" in robots and "Disallow: /api/" in robots
+
+    sitemap = client.get("/sitemap.xml")
+    assert sitemap.mimetype == "application/xml"
+    body = sitemap.get_data(as_text=True)
+    for path in ["/", "/catalog", "/method", "/privacy", "/terms"]:
+        assert f"<loc>http" in body and path in body
+
+
+# --- accessibility surface -------------------------------------------------
+
+def test_every_image_and_svg_has_a_text_alternative():
+    for tpl in (REPO / "web" / "templates").glob("*.html"):
+        html = tpl.read_text()
+        for tag in re.findall(r"<img\b[^>]*>", html):
+            assert "alt=" in tag, f"{tpl.name}: img without alt"
+        for tag in re.findall(r"<svg\b[^>]*>", html):
+            assert ('role="img"' in tag and "aria-label" in tag) or 'aria-hidden' in tag \
+                or 'focusable="false"' in tag, f"{tpl.name}: svg without a text alternative"
+
+
+def test_pages_have_landmarks_and_a_skip_link(client):
+    html = client.get("/").get_data(as_text=True)
+    for needle in ["skip-link", "<main", "<header", "<footer", "<nav", 'lang="en"']:
+        assert needle in html
+
+
+def test_form_inputs_are_labelled(client):
+    html = client.get("/contact").get_data(as_text=True)
+    for field in ["name", "email", "message"]:
+        assert f'for="{field}"' in html
+        assert f'id="{field}"' in html
+
+
+def test_viewport_meta_present_for_mobile(client):
+    assert 'name="viewport"' in client.get("/").get_data(as_text=True)
+
+
+# --- security headers ------------------------------------------------------
+
+def test_security_headers_on_every_response(client):
+    response = client.get("/")
+    headers = response.headers
+    assert headers["X-Content-Type-Options"] == "nosniff"
+    assert headers["X-Frame-Options"] == "DENY"
+    assert "Content-Security-Policy" in headers
+    assert headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+    assert "geolocation=()" in headers["Permissions-Policy"]
+
+
+def test_csp_allows_no_external_origin_by_default(client):
+    csp = client.get("/").headers["Content-Security-Policy"]
+    assert "script-src 'self'" in csp
+    assert "'unsafe-inline'" not in csp
+    assert "'unsafe-eval'" not in csp
+    assert "frame-ancestors 'none'" in csp
+    assert "http://" not in csp and "https://" not in csp
+
+
+def test_no_external_resource_is_referenced_by_any_template():
+    """The CSP would block these anyway; this catches them at authoring time."""
+    for tpl in (REPO / "web" / "templates").glob("*.html"):
+        html = tpl.read_text()
+        for match in re.findall(r'(?:src|href)="(https?://[^"]+)"', html):
+            assert False, f"{tpl.name} references external resource {match}"
+
+
+# --- api validation --------------------------------------------------------
+
+def test_simulate_runs(client):
+    r = client.post("/api/simulate", json={"tractor": "jd_6145r",
+                                           "implement": "jd_1590_10ft"})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["summary"]["steps"] > 0
+    assert len(body["series"]["t"]) <= 601
+
+
+@pytest.mark.parametrize("payload,field", [
+    ({"tractor": "jd_6145r", "speed": 1e6}, "speed"),
+    ({"tractor": "jd_6145r", "speed": -4}, "speed"),
+    ({"tractor": "jd_6145r", "slope_deg": 89}, "slope_deg"),
+    ({"tractor": "jd_6145r", "slip": 0.99}, "slip"),
+    ({"tractor": "jd_6145r", "duration": 1e9}, "duration"),
+    ({"tractor": "jd_6145r", "controller": "telepathy"}, "controller"),
+])
+def test_out_of_range_values_are_rejected(client, payload, field):
+    r = client.post("/api/simulate", json=payload)
+    assert r.status_code == 422
+    assert any(f["field"] == field for f in r.get_json()["fields"])
+
+
+def test_unknown_fields_are_rejected_not_ignored(client):
+    r = client.post("/api/simulate", json={"tractor": "jd_6145r", "__proto__": {}})
+    assert r.status_code == 422
+
+
+def test_identifier_charset_is_restricted(client):
+    r = client.post("/api/simulate", json={"tractor": "../../etc/passwd"})
+    assert r.status_code == 422
+
+
+def test_unknown_machine_is_a_clean_error(client):
+    r = client.post("/api/simulate", json={"tractor": "no_such_tractor"})
+    assert r.status_code == 422
+    assert "Unknown tractor" in r.get_json()["message"]
+
+
+def test_articulated_tractor_is_refused_with_an_explanation(client):
+    r = client.post("/api/simulate", json={"tractor": "caseih_steiger_500_quadtrac"})
+    assert r.status_code == 422
+    assert "articulation" in r.get_json()["message"]
+
+
+def test_non_json_body_is_rejected(client):
+    r = client.post("/api/simulate", data="tractor=jd_6145r",
+                    content_type="application/x-www-form-urlencoded")
+    assert r.status_code == 415
+
+
+def test_json_array_body_is_rejected(client):
+    r = client.post("/api/simulate", json=[1, 2, 3])
+    assert r.status_code == 400
+
+
+def test_oversized_payload_is_rejected(client, app):
+    blob = {"tractor": "jd_6145r", "implement": "x" * (app.config["MAX_CONTENT_LENGTH"] + 500)}
+    r = client.post("/api/simulate", data=json.dumps(blob),
+                    content_type="application/json")
+    assert r.status_code in (413, 422)
+
+
+def test_simulation_cost_is_capped_by_total_steps(client, app):
+    r = client.post("/api/simulate", json={"tractor": "jd_6145r", "duration": 300.0})
+    assert r.status_code == 200
+    assert r.get_json()["summary"]["steps"] <= app.settings.max_simulation_steps
+
+
+# --- rate limiting ---------------------------------------------------------
+
+def test_every_endpoint_is_rate_limited():
+    settings = replace(load_settings(), secret_key="k", secret_key_is_ephemeral=False,
+                       rate_limit_per_minute=1, rate_limit_burst=2)
+    client = create_app(settings).test_client()
+
+    codes = [client.get("/").status_code for _ in range(6)]
+    assert 429 in codes
+
+    api = [client.post("/api/simulate", json={"tractor": "jd_6145r"}).status_code
+           for _ in range(4)]
+    assert 429 in api
+
+
+def test_rate_limited_response_carries_retry_after():
+    settings = replace(load_settings(), secret_key="k", secret_key_is_ephemeral=False,
+                       rate_limit_per_minute=1, rate_limit_burst=1)
+    client = create_app(settings).test_client()
+    for _ in range(5):
+        r = client.post("/api/simulate", json={"tractor": "jd_6145r"})
+        if r.status_code == 429:
+            assert int(r.headers["Retry-After"]) >= 1
+            return
+    pytest.fail("rate limit never triggered")
+
+
+def test_static_assets_are_not_rate_limited():
+    settings = replace(load_settings(), secret_key="k", secret_key_is_ephemeral=False,
+                       rate_limit_per_minute=1, rate_limit_burst=1)
+    client = create_app(settings).test_client()
+    codes = [client.get("/static/css/main.css").status_code for _ in range(8)]
+    assert 429 not in codes
+
+
+# --- contact form ----------------------------------------------------------
+
+def _csrf(client):
+    html = client.get("/contact").get_data(as_text=True)
+    return re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
+
+
+def test_contact_requires_csrf_token(client):
+    r = client.post("/contact", data={"name": "A", "email": "a@b.co",
+                                      "message": "hello there friend"})
+    assert r.status_code == 400
+    assert "session expired" in r.get_data(as_text=True).lower()
+
+
+def test_contact_shows_field_errors(client):
+    token = _csrf(client)
+    r = client.post("/contact", data={"csrf_token": token, "name": "",
+                                      "email": "not-an-email", "message": "short"})
+    assert r.status_code == 400
+    body = r.get_data(as_text=True)
+    assert 'id="email-error"' in body and "valid email" in body
+    assert 'aria-invalid="true"' in body
+
+
+def test_contact_preserves_what_was_typed_on_error(client):
+    token = _csrf(client)
+    r = client.post("/contact", data={"csrf_token": token, "name": "Ada Lovelace",
+                                      "email": "bad", "message": "a valid length message"})
+    assert "Ada Lovelace" in r.get_data(as_text=True)
+
+
+def test_contact_success_redirects_to_thank_you(client, tmp_path, app):
+    app.instance_path = str(tmp_path)
+    token = _csrf(client)
+    r = client.post("/contact", data={"csrf_token": token, "name": "Ada",
+                                      "email": "ada@example.org",
+                                      "message": "A question about hitch geometry."})
+    assert r.status_code == 302
+    assert r.headers["Location"].endswith("/thank-you")
+    stored = (tmp_path / "messages.jsonl").read_text()
+    assert "ada@example.org" in stored
+
+
+def test_honeypot_submission_is_accepted_but_not_stored(client, tmp_path, app):
+    app.instance_path = str(tmp_path)
+    token = _csrf(client)
+    r = client.post("/contact", data={"csrf_token": token, "name": "Bot",
+                                      "email": "bot@example.org",
+                                      "message": "buy things from me please",
+                                      "website": "http://spam.example"})
+    assert r.status_code == 302
+    assert not (tmp_path / "messages.jsonl").exists()
+
+
+def test_submitted_content_is_escaped_not_executed(client):
+    token = _csrf(client)
+    r = client.post("/contact", data={"csrf_token": token,
+                                      "name": "<script>alert(1)</script>",
+                                      "email": "bad", "message": "x" * 20})
+    body = r.get_data(as_text=True)
+    assert "<script>alert(1)</script>" not in body
+    assert "&lt;script&gt;" in body
+
+
+# --- configuration hygiene -------------------------------------------------
+
+def test_no_secret_is_hardcoded_in_the_source():
+    """Every credential comes from the environment."""
+    pattern = re.compile(
+        r"(?i)(secret_key|api_key|password|passwd|token|access_key)\s*[:=]\s*"
+        r"['\"][A-Za-z0-9_\-/+]{12,}['\"]"
+    )
+    for path in list((REPO / "web").rglob("*.py")) + [REPO / "wsgi.py"]:
+        for i, line in enumerate(path.read_text().splitlines(), 1):
+            assert not pattern.search(line), f"{path.name}:{i} looks like a hardcoded secret"
+
+
+def test_env_example_ships_no_values():
+    text = (REPO / ".env.example").read_text()
+    for line in text.splitlines():
+        if line.startswith("AGGSIM_SECRET_KEY"):
+            assert line.strip() == "AGGSIM_SECRET_KEY="
+
+
+def test_env_files_are_git_ignored():
+    ignored = (REPO / ".gitignore").read_text()
+    assert ".env" in ignored and "instance/" in ignored
+
+
+def test_contact_details_default_to_absent_not_invented():
+    settings = load_settings()
+    assert settings.contact_email is None or "@" in settings.contact_email
+    assert not settings.contact_configured or settings.contact_address
+
+
+def test_no_cookie_banner_when_nothing_sets_cookies(client):
+    html = client.get("/").get_data(as_text=True)
+    assert "cookie-banner" not in html
+
+
+def test_cookie_banner_appears_only_when_analytics_is_on():
+    settings = replace(load_settings(), secret_key="k", secret_key_is_ephemeral=False,
+                       analytics_enabled=True)
+    html = create_app(settings).test_client().get("/").get_data(as_text=True)
+    assert "cookie-banner" in html
+    assert 'data-cookie="yes"' in html and 'data-cookie="no"' in html
+
+
+def test_session_cookie_flags_are_safe(app):
+    assert app.config["SESSION_COOKIE_HTTPONLY"] is True
+    assert app.config["SESSION_COOKIE_SAMESITE"] == "Lax"

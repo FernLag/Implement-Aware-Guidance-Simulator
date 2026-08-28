@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ meta_title }}</title>
+<meta name="description" content="{{ meta_description }}">
+<link rel="canonical" href="{{ canonical }}">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Implement-Aware Guidance Simulator">
+<meta property="og:title" content="{{ meta_title }}">
+<meta property="og:description" content="{{ meta_description }}">
+<meta property="og:url" content="{{ canonical }}">
+<meta property="og:image" content="{{ og_image }}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Two tracks across a field, one for the tractor and one for the implement edge, separating from each other on a side slope.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{ meta_title }}">
+<meta name="twitter:description" content="{{ meta_description }}">
+<meta name="twitter:image" content="{{ og_image }}">
+
+<link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
+<link rel="alternate icon" href="{{ url_for('static', filename='img/favicon-32.png') }}" sizes="32x32">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
+<link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
+<meta name="theme-color" content="#33291D">
+
+<link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body class="page-{{ page }}">
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="{{ url_for('index') }}" aria-label="Implement-Aware Guidance Simulator, home">
+      <svg class="brand-mark" width="40" height="40" viewBox="0 0 40 40" role="img" aria-label="Logo: a straight guidance line with an implement swath offset below it">
+        <rect width="40" height="40" fill="#33291D"/>
+        <path d="M4 14 H36" stroke="#D8C79F" stroke-width="2.5"/>
+        <path d="M4 24 C14 24, 18 28, 36 28" stroke="#C2703F" stroke-width="2.5" fill="none"/>
+        <circle cx="12" cy="14" r="3" fill="#8FA06B"/>
+      </svg>
+      <span class="brand-text">
+        <strong>Implement-Aware</strong>
+        <span>Guidance Simulator</span>
+      </span>
+    </a>
+
+    <nav class="site-nav" aria-label="Main">
+      <ul>
+        <li><a href="{{ url_for('index') }}" {% if page == 'index' %}aria-current="page"{% endif %}>Simulator</a></li>
+        <li><a href="{{ url_for('catalog') }}" {% if page == 'catalog' %}aria-current="page"{% endif %}>Catalog</a></li>
+        <li><a href="{{ url_for('method') }}" {% if page == 'method' %}aria-current="page"{% endif %}>Method</a></li>
+        <li><a href="{{ url_for('contact') }}" {% if page == 'contact' %}aria-current="page"{% endif %}>Contact</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+{% block content %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-col">
+      <h2 class="footer-heading">About this tool</h2>
+      <p>A research simulator comparing two error objectives in agricultural
+      autosteer: where the tractor is, and where its implement edge actually is.
+      Results are model output, not measurements from a real machine.</p>
+    </div>
+
+    <div class="footer-col">
+      <h2 class="footer-heading">Pages</h2>
+      <ul class="footer-links">
+        <li><a href="{{ url_for('index') }}">Simulator</a></li>
+        <li><a href="{{ url_for('catalog') }}">Equipment catalog</a></li>
+        <li><a href="{{ url_for('method') }}">Method</a></li>
+        <li><a href="{{ url_for('contact') }}">Contact</a></li>
+      </ul>
+    </div>
+
+    <div class="footer-col">
+      <h2 class="footer-heading">Legal</h2>
+      <ul class="footer-links">
+        <li><a href="{{ url_for('privacy') }}">Privacy</a></li>
+        <li><a href="{{ url_for('terms') }}">Terms of use</a></li>
+      </ul>
+      <address class="footer-address">
+        {% if settings.contact_org %}<span>{{ settings.contact_org }}</span><br>{% endif %}
+        {% if settings.contact_address %}
+          {{ settings.contact_address }}
+        {% else %}
+          <span class="unset">No postal address is configured for this deployment.</span>
+        {% endif %}
+        {% if settings.contact_email %}
+          <br><a href="mailto:{{ settings.contact_email }}">{{ settings.contact_email }}</a>
+        {% endif %}
+      </address>
+    </div>
+  </div>
+
+  <div class="wrap footer-base">
+    <p>&copy; {{ year }} Implement-Aware Guidance Simulator. Equipment names and
+    model numbers are the trademarks of their respective manufacturers and are
+    used here only to identify the machines whose published specifications the
+    catalog cites.</p>
+    <p>Figures produced by this tool are simulation output from a kinematic
+    model. They are not a substitute for field measurement and must not be used
+    as the sole basis for machinery, agronomic or safety decisions.</p>
+  </div>
+</footer>
+
+{% if settings.sets_cookies %}
+<div class="cookie-banner" id="cookie-banner" role="dialog" aria-modal="false"
+     aria-labelledby="cookie-title" aria-describedby="cookie-body" hidden>
+  <div class="wrap cookie-inner">
+    <div>
+      <h2 id="cookie-title">Analytics cookies</h2>
+      <p id="cookie-body">This deployment has optional analytics switched on. It
+      would set a cookie to count visits. Nothing is stored until you choose.
+      The simulator works exactly the same either way.
+      <a href="{{ url_for('privacy') }}">Read what is collected</a>.</p>
+    </div>
+    <div class="cookie-actions">
+      <button type="button" class="btn btn-primary" data-cookie="yes">Yes, allow</button>
+      <button type="button" class="btn btn-quiet" data-cookie="no">No thanks</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

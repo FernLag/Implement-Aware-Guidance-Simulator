@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="prose">
+  <div class="wrap" style="max-width:min(680px,92vw)">
+    <p class="eyebrow">Error 500</p>
+    <h1>Something failed on the server</h1>
+    <p class="lede">The request could not be completed. The failure has been
+    logged. Nothing you entered has been lost from your browser.</p>
+    <p><a class="btn btn-primary" href="{{ url_for('index') }}">Back to the simulator</a></p>
+  </div>
+</section>
+{% endblock %}
