@@ -894,6 +894,26 @@
             patch.metresPerPixel.toFixed(2) + " m per pixel, covering " +
             Math.round(patch.extentM) + " m of ground.";
           if (sceneData) { drawFrame(frame); }
+
+          // The photograph on its own is a flat picture of rolling ground.
+          // Reading the height as well lets it be draped over the shape it
+          // was taken of. Failing here costs the relief, not the imagery.
+          var travel = (parseFloat(document.getElementById("speed").value) || 3) * 60;
+          return window.GuidanceTerrain.loadHeights(here.lat, here.lon, heading,
+                                                    travel, patch)
+            .then(function (grid) {
+              terrain.heights = grid;
+              terrain.height = grid.height;
+              note.textContent += " Ground height sampled over " +
+                Math.round(grid.half_m * 2) + " m at " + grid.step_m.toFixed(0) +
+                " m spacing, showing " + grid.relief_m.toFixed(1) +
+                " m of relief.";
+              if (sceneData) { drawFrame(frame); }
+            })
+            .catch(function () {
+              note.textContent += " Ground height could not be read, so the " +
+                "photograph is drawn on a flat plane.";
+            });
         })
         .catch(function (e) {
           // The slope was read even if the photograph was not, and that is

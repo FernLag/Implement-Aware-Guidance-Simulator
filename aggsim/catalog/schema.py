@@ -82,6 +82,11 @@ class Implement:
     implement_wheelbase: Param | None = None
     # Tillage draft classification, used by the Stage 0 pairing check.
     draft_class: str | None = None
+    # Spacing between the rows the implement plants or tends, where the
+    # manufacturer publishes it. Absent for everything that does not work in
+    # rows -- a disk harrow has no row spacing -- and never inferred for an
+    # implement whose maker does not state one.
+    row_spacing: Param | None = None
     working_depth: Param | None = None
     draft_power_per_width: Param | None = None
     notes: str | None = None

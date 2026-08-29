@@ -14,14 +14,14 @@ from flask import Flask, jsonify, render_template, request, url_for
 from pydantic import ValidationError
 
 from .config import Settings, load_settings
-from .schemas import FieldRequest, SimulationRequest
+from .schemas import ElevationGridRequest, FieldRequest, SimulationRequest
 from .security import (
     RateLimiter, apply_security_headers, build_csp, too_many_requests,
 )
 from .simulation import SimulationError, catalog_payload, run_simulation
 from .terrain import (
-    ATTRIBUTION, TerrainError, fetch_field_image, fetch_tile, field_slope,
-    tile_for, valid_tile,
+    ATTRIBUTION, TerrainError, elevation_grid, fetch_field_image, fetch_tile,
+    field_slope, tile_for, valid_tile,
 )
 
 log = logging.getLogger("aggsim.web")
@@ -98,6 +98,9 @@ def create_app(settings: Settings | None = None) -> Flask:
             scope, cost = "tile", 0.5
         elif request.path == "/api/field":
             cost = 3.0
+        elif request.path == "/api/elevation-grid":
+            # One upstream request sampling a few hundred points.
+            cost = 4.0
         retry = limiter.check(scope, cost)
         if retry is not None:
             if request.path.startswith("/api/"):
@@ -329,6 +332,34 @@ def create_app(settings: Settings | None = None) -> Flask:
             "tile": {"z": zoom, "x": tx, "y": ty},
             "attribution": ATTRIBUTION,
         })
+
+    @app.post("/api/elevation-grid")
+    def api_elevation_grid():
+        """Ground height over a square of field, for drawing the terrain."""
+        if not request.is_json:
+            return jsonify({"error": "bad_request",
+                            "message": "Send application/json."}), 415
+        raw = request.get_json(silent=True)
+        if not isinstance(raw, dict):
+            return jsonify({"error": "bad_request",
+                            "message": "Body must be a JSON object."}), 400
+        try:
+            req = ElevationGridRequest(**raw)
+        except ValidationError as exc:
+            return jsonify({
+                "error": "validation_failed",
+                "fields": [
+                    {"field": ".".join(str(p) for p in e["loc"]),
+                     "message": e["msg"].replace("Value error, ", "")}
+                    for e in exc.errors()
+                ],
+            }), 422
+        try:
+            grid = elevation_grid(req.lat, req.lon, req.heading_deg,
+                                  req.half_m, req.n)
+        except TerrainError as exc:
+            return jsonify({"error": "no_elevation", "message": str(exc)}), 502
+        return jsonify(grid)
 
     @app.get("/healthz")
     def healthz():

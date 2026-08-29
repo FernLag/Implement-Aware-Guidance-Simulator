@@ -78,6 +78,51 @@
     /* Model coordinates to image pixels. The line runs along model x, so the
        heading rotates model space into east and north, measured from the
        centre of the photograph rather than from the start of the run. */
+    /* Ground height over the same square the photograph covers, so the two
+       describe the same ground. Returns a height(x, y) in metres of relief
+       about the centre of the patch, interpolated between samples.
+
+       The grid is coarse by necessity -- it is one request to a free public
+       service, and the cost grows with the square of its side -- so this is
+       the roll of the land, not the tilth. */
+    loadHeights: function (lat, lon, headingDeg, travelMetres, patch) {
+      var psi = headingDeg * Math.PI / 180;
+      var travel = Math.max(60, travelMetres || 180);
+      var mid = patch ? patch.midAlong : travel / 2;
+      var half = Math.min(600, patch ? patch.halfMetres : travel * 0.62 + 55);
+      var mpdLon = METRES_PER_DEG_LAT * Math.max(0.05, Math.cos(lat * Math.PI / 180));
+      var midLat = lat + (mid * Math.cos(psi)) / METRES_PER_DEG_LAT;
+      var midLon = lon + (mid * Math.sin(psi)) / mpdLon;
+
+      return fetch("/api/elevation-grid", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          lat: midLat, lon: midLon, heading_deg: headingDeg,
+          half_m: half, n: 21
+        })
+      }).then(function (r) {
+        if (!r.ok) { throw new Error("Ground height could not be read for that location."); }
+        return r.json();
+      }).then(function (g) {
+        var n = g.n, hm = g.half_m, step = g.step_m, h = g.heights_m;
+        function at(i, j) {
+          i = i < 0 ? 0 : (i > n - 1 ? n - 1 : i);
+          j = j < 0 ? 0 : (j > n - 1 ? n - 1 : j);
+          return h[j * n + i];
+        }
+        g.height = function (x, y) {
+          // Same origin as the imagery mapper: x is along, offset by midAlong.
+          var fx = (x - mid + hm) / step, fy = (y + hm) / step;
+          var i = Math.floor(fx), j = Math.floor(fy);
+          var tx = fx - i, ty = fy - j;
+          var a = at(i, j), b = at(i + 1, j), c = at(i, j + 1), d = at(i + 1, j + 1);
+          return (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
+        };
+        return g;
+      });
+    },
+
     mapper: function (patch, headingDeg) {
       var psi = headingDeg * Math.PI / 180;
       var sinp = Math.sin(psi), cosp = Math.cos(psi);

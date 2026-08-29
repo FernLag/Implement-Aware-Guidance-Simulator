@@ -71,6 +71,22 @@ class SimulationRequest(BaseModel):
         return value
 
 
+class ElevationGridRequest(BaseModel):
+    """A square of ground to read height over, for drawing the terrain."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lat: float = Field(ge=-90.0, le=90.0)
+    lon: float = Field(ge=-180.0, le=180.0)
+    heading_deg: float = Field(default=90.0, ge=0.0, lt=360.0)
+    # Half the side of the square, matching the imagery patch so the height
+    # grid and the photograph describe the same ground.
+    half_m: float = Field(default=150.0, ge=20.0, le=600.0)
+    # Bounded hard: this is one upstream request per call, and the cost to a
+    # free public service grows with the square of this number.
+    n: int = Field(default=17, ge=5, le=21)
+
+
 class FieldRequest(BaseModel):
     """A real location to read ground slope from."""
 

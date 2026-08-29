@@ -251,3 +251,27 @@ def test_mounted_and_trailed_are_both_well_represented(catalog):
 def test_catalog_size(catalog):
     assert len(catalog.tractors) >= 18
     assert len(catalog.implements) >= 21
+
+
+def test_row_spacing_is_sourced_wherever_it_exists():
+    """Rows are drawn from this number, so an invented one would put a
+    fabricated figure on the screen looking exactly like a real one. Absent is
+    the correct answer for an implement whose maker does not publish it."""
+    catalog = load_catalog()
+    for implement in catalog.implements.values():
+        if implement.row_spacing is None:
+            continue
+        assert implement.row_spacing.source, (
+            f"{implement.id}: row spacing must be sourced, not assumed")
+
+
+def test_row_spacing_divides_the_working_width_into_whole_rows():
+    """30 in across a 16 row planter is 12.192 m. If the two disagree, one of
+    them is wrong."""
+    catalog = load_catalog()
+    for implement in catalog.implements.values():
+        if implement.row_spacing is None:
+            continue
+        rows = implement.working_width.value / implement.row_spacing.value
+        assert abs(rows - round(rows)) < 0.02, (
+            f"{implement.id}: {rows:.3f} rows is not a whole number")

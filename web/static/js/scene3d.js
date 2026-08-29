@@ -85,6 +85,18 @@
     "void main() {",
     "  vec3 n = normalize(vNormal);",
     "  vec3 albedo = mix(uTint, texture2D(uTex, vUV).rgb, uUseTex);",
+    // Standing stubble on ground that has not been worked. Two combed bands at
+    // an angle to each other break up what was otherwise a flat wash of one
+    // colour across hundreds of metres. Skipped entirely where a real
+    // photograph is draped, because the photograph already has ground in it.
+    // Faded out with distance. A 20 cm pattern seen from 300 m is finer than
+    // a pixel, and drawing it anyway turns the far field into a shimmering
+    // moire that moves when the camera does.
+    "  if (uUseTex < 0.5) {",
+    "    float near = 1.0 - clamp(vDepth / (uFogStart * 1.8), 0.0, 1.0);",
+    "    float c = sin(vWorld.y * 5.6) * 0.5 + sin(vWorld.x * 0.9 + vWorld.y * 3.1) * 0.5;",
+    "    albedo *= 1.0 + 0.06 * c * near;",
+    "  }",
     "  float g = gridLine(vWorld, 5.0) * uGrid * (1.0 - clamp(vDepth / (uFogStart * 2.6), 0.0, 0.85));",
     "  albedo = mix(albedo, vec3(0.98, 0.96, 0.90), g * 0.30);",
     "  float lambert = max(dot(n, uLight), 0.0);",
@@ -92,6 +104,19 @@
     "  float fog = clamp((vDepth - uFogStart) / uFogRange, 0.0, 0.45);",
     "  gl_FragColor = vec4(mix(base, uFog, fog), 1.0);",
     "}"
+  ].join("\n");
+
+  /* A graded sky. A single flat clear colour met the ground in a hard line
+     that read as the edge of the model rather than as distance. */
+  var SKY_VS = [
+    "attribute vec2 aPos; varying float vY;",
+    "void main() { vY = aPos.y * 0.5 + 0.5; gl_Position = vec4(aPos, 0.999, 1.0); }"
+  ].join("\n");
+
+  var SKY_FS = [
+    "precision mediump float; varying float vY;",
+    "uniform vec3 uLow; uniform vec3 uHigh;",
+    "void main() { gl_FragColor = vec4(mix(uLow, uHigh, pow(vY, 0.75)), 1.0); }"
   ].join("\n");
 
   var FLAT_VS = [
@@ -106,6 +131,9 @@
 
   var LIGHT = normalise([0.40, -0.46, 0.79]);
   var FOG = [0.80, 0.83, 0.79];
+  // The horizon matches the fog exactly, so ground and sky meet without a seam.
+  var SKY_LOW = FOG;
+  var SKY_HIGH = [0.56, 0.68, 0.80];
 
   var COL = {
     soil: [0.74, 0.69, 0.58],
@@ -125,6 +153,7 @@
     guide: [0.99, 0.85, 0.28],      // the line being followed right now
     guideIdle: [0.86, 0.82, 0.70],  // the lines waiting their turn
     headland: [0.52, 0.44, 0.31],
+    row: [0.21, 0.16, 0.11],
     trackTractor: [0.24, 0.33, 0.16],
     trackImplement: [0.55, 0.24, 0.09]
   };
@@ -144,11 +173,26 @@
   }
 
   /* Machine coordinates into the world, then tilt the world by the slope. */
+  /* Real ground height, when a field has been read. Held at module scope
+     because every placement has to agree about where the ground is: if the
+     swath used the terrain and the tracks did not, they would separate.
+
+     HEIGHT_LOCK pins the height to a single value while the machine is being
+     built. Sampling per vertex there would bend the tractor over the hill it
+     is standing on; a machine is rigid and sits at one height. */
+  var HEIGHT_AT = null;
+  var HEIGHT_LOCK = null;
+
+  function groundHeight(x, y) {
+    if (HEIGHT_LOCK !== null) { return HEIGHT_LOCK; }
+    return HEIGHT_AT ? HEIGHT_AT(x, y) : 0;
+  }
+
   function place(local, origin, yaw, tilt) {
     var c = Math.cos(yaw), s = Math.sin(yaw);
     var x = origin[0] + local[0] * c - local[1] * s;
     var y = origin[1] + local[0] * s + local[1] * c;
-    var z = local[2];
+    var z = local[2] + groundHeight(x, y);
     var ct = Math.cos(tilt), st = Math.sin(tilt);
     return [x, y * ct - z * st, y * st + z * ct];
   }
@@ -474,23 +518,38 @@
     cy0 = Math.round(cy0 / step) * step;
     var map = terrain && terrain.map;
     var pixels = terrain && terrain.patch ? terrain.patch.pixels : 1;
-    var nx = 0, ny = -Math.sin(tilt), nz = Math.cos(tilt);
+    var flatNx = 0, flatNy = -Math.sin(tilt), flatNz = Math.cos(tilt);
+    var ct = Math.cos(tilt), st = Math.sin(tilt);
 
     function vertex(x, y) {
       var p = place([x, y, 0], [0, 0], 0, tilt);
       var uv = map ? map(x, y) : [0, 0];
-      return { p: p, u: uv[0] / pixels, v: uv[1] / pixels };
+      var nx = flatNx, ny = flatNy, nz = flatNz;
+      if (HEIGHT_AT) {
+        // Slope of the real surface by central difference, then rotated into
+        // the same frame the flat normal lives in. Without this the relief is
+        // visible in silhouette but shades as if it were still flat, which
+        // reads as a printed picture rather than as ground.
+        var d = step * 0.5;
+        var gx = (HEIGHT_AT(x + d, y) - HEIGHT_AT(x - d, y)) / (2 * d);
+        var gy = (HEIGHT_AT(x, y + d) - HEIGHT_AT(x, y - d)) / (2 * d);
+        var ux = -gx, uy = -gy, uz = 1.0;
+        var len = Math.hypot(ux, uy, uz) || 1;
+        ux /= len; uy /= len; uz /= len;
+        nx = ux; ny = uy * ct - uz * st; nz = uy * st + uz * ct;
+      }
+      return { p: p, u: uv[0] / pixels, v: uv[1] / pixels,
+               nx: nx, ny: ny, nz: nz };
     }
     for (var gx = x0; gx < x0 + span; gx += step) {
       for (var gy = cy0 - half; gy < cy0 + half; gy += step) {
         var a = vertex(gx, gy), b = vertex(gx + step, gy);
         var c = vertex(gx + step, gy + step), d = vertex(gx, gy + step);
-        // The ground contains (1,0,0) and (0,cos t,sin t), so its normal is
-        // (0, -sin t, cos t). Constant across the plane, so it is computed
-        // once outside the loop.
+        // On flat ground the normal is (0, -sin t, cos t) everywhere; over
+        // real terrain each vertex carries its own.
         [[a, b, c], [a, c, d]].forEach(function (t) {
           t.forEach(function (q) {
-            mb.data.push(q.p[0], q.p[1], q.p[2], nx, ny, nz, q.u, q.v);
+            mb.data.push(q.p[0], q.p[1], q.p[2], q.nx, q.ny, q.nz, q.u, q.v);
           });
         });
       }
@@ -579,6 +638,38 @@
     }
   }
 
+  /* The rows themselves, where the implement's maker publishes a spacing.
+     Each row is where one row unit ran, so the rows follow the implement's
+     yaw rather than the guidance line, and a trailed implement swinging
+     through a correction bends every row with it. That is the whole argument
+     of the project drawn on the ground.
+
+     Coarser along the path than the swath is: a row is a straight-ish line and
+     does not need a vertex every sample to read as one. */
+  function buildRows(mb, s, upTo, tilt, a, b, halfWidth, spacing, plan) {
+    var rows = Math.floor((halfWidth * 2) / spacing);
+    if (rows < 2 || rows > 64) { return; }
+    var step = Math.max(1, Math.floor(upTo / (plan ? 150 : 90)));
+    var from = plan ? 0 : Math.max(0, upTo - 2200);
+    // Offsets of each row unit from the implement centre.
+    var offsets = [];
+    for (var r = 0; r < rows; r++) {
+      offsets.push(-halfWidth + spacing * (r + 0.5));
+    }
+    for (var i = from; i < upTo - step; i += step) {
+      var p = edgePair(s, i, a, b, halfWidth);
+      var q = edgePair(s, i + step, a, b, halfWidth);
+      if (!p || !q) { continue; }
+      for (var k = 0; k < offsets.length; k++) {
+        // Interpolate across the swath: 0 at the left edge, 1 at the right.
+        var f = (offsets[k] + halfWidth) / (halfWidth * 2);
+        var px = p.lx + (p.rx - p.lx) * f, py = p.ly + (p.ry - p.ly) * f;
+        var qx = q.lx + (q.rx - q.lx) * f, qy = q.ly + (q.ry - q.ly) * f;
+        ribbon(mb, [[px, py], [qx, qy]], tilt, 0.055, COL.row, 0.045);
+      }
+    }
+  }
+
   function buildSwath(mb, s, upTo, tilt, a, b, halfWidth, plan) {
     var step = Math.max(1, Math.floor(upTo / (plan ? 460 : 220)));
     var from = plan ? 0 : Math.max(0, upTo - 2200);
@@ -595,16 +686,17 @@
   /* Planar shadow: every machine vertex dropped onto the ground along the
      light. Drawn through the stencil buffer so overlapping geometry darkens
      the ground once rather than compounding into a black blob. */
-  function shadowVertices(machineData, tilt) {
+  function shadowVertices(machineData, tilt, floor) {
     var out = [], st = Math.sin(tilt), ct = Math.cos(tilt);
+    var base = (floor || 0) + 0.02;
     var kx = LIGHT[0] / LIGHT[2], ky = LIGHT[1] / LIGHT[2];
     for (var i = 0; i < machineData.length; i += 9) {
       var x = machineData[i], wy = machineData[i + 1], wz = machineData[i + 2];
       var y = wy * ct + wz * st;
       var z = -wy * st + wz * ct;
-      if (z < 0.02) { z = 0.02; }
-      var gx = x + z * kx, gy = y + z * ky;
-      out.push(gx, gy * ct, gy * st + 0.02);
+      if (z < base) { z = base; }
+      var gx = x + (z - base) * kx, gy = y + (z - base) * ky;
+      out.push(gx, gy * ct - base * st, gy * st + base * ct);
     }
     return out;
   }
@@ -643,11 +735,16 @@
     this.solid = program(gl, SOLID_VS, SOLID_FS);
     this.ground = program(gl, GROUND_VS, GROUND_FS);
     this.flat = program(gl, FLAT_VS, FLAT_FS);
+    this.sky = program(gl, SKY_VS, SKY_FS);
 
     this.buffers = {
       solid: gl.createBuffer(), ground: gl.createBuffer(),
-      swath: gl.createBuffer(), shadow: gl.createBuffer()
+      swath: gl.createBuffer(), shadow: gl.createBuffer(),
+      sky: gl.createBuffer()
     };
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.sky);
+    gl.bufferData(gl.ARRAY_BUFFER,
+      new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
     this.texture = null;
     this.textureSource = null;
 
@@ -760,6 +857,17 @@
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(FOG[0], FOG[1], FOG[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+
+    // Sky first, as a single triangle covering the viewport with depth writes
+    // off, so everything else draws over it normally.
+    gl.useProgram(this.sky);
+    gl.uniform3fv(gl.getUniformLocation(this.sky, "uLow"), SKY_LOW);
+    gl.uniform3fv(gl.getUniformLocation(this.sky, "uHigh"), SKY_HIGH);
+    gl.depthMask(false);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.sky);
+    bindAttribs(gl, this.sky, 2, [["aPos", 2, 0]]);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.depthMask(true);
 
     var eye = this.eyeFor(target);
     // Depth precision is spent mostly between the near plane and a few times
@@ -898,6 +1006,12 @@
       var im = g.implement;
       var plan = data.scene.plan || null;
 
+      // Real ground, when a field has been read. Everything laid on the ground
+      // consults this, so the swath, the tracks, the guidance lines and the
+      // ground itself all agree about where the surface is.
+      HEIGHT_AT = (terrain && terrain.height) || null;
+      HEIGHT_LOCK = null;
+
       var pose = {
         x: s.x[frame], y: s.y[frame], theta: s.theta[frame],
         delta: s.delta_rad[frame] || 0,
@@ -905,6 +1019,11 @@
         travel: Math.hypot(s.x[frame] - s.x[0], s.y[frame] - s.y[0]),
         thetaImplement: s.theta_implement ? s.theta_implement[frame] : s.theta[frame]
       };
+
+      // The machine is rigid: it sits at one height rather than draping over
+      // the ground the way the swath does.
+      var machineH = HEIGHT_AT ? HEIGHT_AT(pose.x, pose.y) : 0;
+      HEIGHT_LOCK = machineH;
 
       var machine = new Builder();
       buildTractor(machine, g, pose, tilt);
@@ -935,6 +1054,8 @@
       }
       scene.frame(span);
 
+      HEIGHT_LOCK = null;
+
       var groundMb = new Builder();
       buildGround(groundMb, pose.x, tilt, terrain, plan, span);
 
@@ -942,6 +1063,15 @@
       if (im) {
         buildSwath(swathMb, s, frame, tilt, im.hitch_distance.value,
           im.implement_wheelbase.value, im.working_width.value / 2, plan);
+        // Only where the manufacturer states a row spacing. Everything else
+        // gets worked ground with no rows drawn on it, because a disk harrow
+        // does not leave rows and a made-up spacing would look just as real as
+        // a sourced one.
+        if (im.row_spacing) {
+          buildRows(swathMb, s, frame, tilt, im.hitch_distance.value,
+            im.implement_wheelbase.value, im.working_width.value / 2,
+            im.row_spacing.value, plan);
+        }
       }
       buildTracks(swathMb, s, frame, tilt, im, plan);
 
@@ -951,7 +1081,11 @@
       var figures = figurePositions(pose.x);
       var offset = Math.max(FIGURE_OFFSET_M, span * 0.5 + 4);
       figures.forEach(function (f) {
+        // Each figure stands upright on the ground where it is, rather than
+        // leaning with the slope under it.
+        HEIGHT_LOCK = HEIGHT_AT ? HEIGHT_AT(f[0], -offset) : 0;
         buildScaleFigure(machine, f[0], offset, tilt);
+        HEIGHT_LOCK = null;
       });
 
       var back = im ? (im.hitch_distance.value + im.implement_wheelbase.value) * 0.5 : 0;
@@ -973,7 +1107,7 @@
         machine: new Float32Array(machine.data),
         ground: new Float32Array(groundMb.data),
         swath: new Float32Array(swathMb.data),
-        shadow: new Float32Array(shadowVertices(machine.data, tilt)),
+        shadow: new Float32Array(shadowVertices(machine.data, tilt, machineH)),
         texture: terrain && terrain.patch ? terrain.patch.image : null
       }, target, tilt);
 

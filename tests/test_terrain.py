@@ -104,7 +104,10 @@ def test_unknown_field_is_rejected(client):
 # --- missing data ----------------------------------------------------------
 
 def _fake_samples(values):
-    def _open(url, data=None):
+    # Signature matches the real _open, timeout included: a large grid is
+    # posted with an explicit timeout, and a stub that cannot accept one fails
+    # for a reason that has nothing to do with what is being tested.
+    def _open(url, data=None, timeout=None):
         payload = {"samples": [
             {"locationId": i, "value": str(v), "resolution": 1}
             for i, v in enumerate(values)
@@ -330,3 +333,86 @@ def test_the_client_asks_this_origin_for_the_photograph():
     source = (Path(terrain.__file__).parent / "static" / "js" / "terrain.js").read_text()
     assert "/api/field-image?" in source
     assert "https://" not in source
+
+
+# --- elevation grid, for drawing the ground -------------------------------
+
+def _ramp(n, rise_per_step=0.5):
+    """A plane rising with the along index, so the shape is predictable."""
+    return [rise_per_step * (k % n) for k in range(n * n)]
+
+
+def test_grid_heights_are_relative_to_the_centre(monkeypatch):
+    """Absolute altitude is not what the renderer wants, and a field 700 m up
+    would push every vertex 700 m into the air."""
+    n = 5
+    monkeypatch.setattr(terrain, "_open", _fake_samples(
+        [1000.0 + v for v in _ramp(n)]))
+    grid = terrain.elevation_grid(46.9, -117.4, 0.0, 100.0, n)
+    centre = grid["heights_m"][(n // 2) * n + (n // 2)]
+    assert centre == pytest.approx(0.0, abs=1e-9)
+    assert grid["centre_elevation_m"] == pytest.approx(1001.0)
+
+
+def test_grid_reports_its_own_relief(monkeypatch):
+    n = 5
+    monkeypatch.setattr(terrain, "_open", _fake_samples(_ramp(n)))
+    grid = terrain.elevation_grid(46.9, -117.4, 0.0, 100.0, n)
+    assert grid["relief_m"] == pytest.approx(2.0)
+    assert grid["max_m"] - grid["min_m"] == pytest.approx(grid["relief_m"])
+
+
+def test_grid_size_is_bounded(monkeypatch):
+    """One upstream request per call, and the cost grows with the square."""
+    monkeypatch.setattr(terrain, "_open", _fake_samples(_ramp(terrain.GRID_MAX)))
+    grid = terrain.elevation_grid(46.9, -117.4, 0.0, 100.0, 999)
+    assert grid["n"] == terrain.GRID_MAX
+
+    monkeypatch.setattr(terrain, "_open", _fake_samples(_ramp(terrain.GRID_MIN)))
+    assert terrain.elevation_grid(46.9, -117.4, 0.0, 100.0, 1)["n"] == terrain.GRID_MIN
+
+
+def test_grid_spacing_covers_the_requested_square(monkeypatch):
+    n = 5
+    monkeypatch.setattr(terrain, "_open", _fake_samples(_ramp(n)))
+    grid = terrain.elevation_grid(46.9, -117.4, 0.0, 120.0, n)
+    assert grid["step_m"] * (n - 1) == pytest.approx(2 * grid["half_m"])
+
+
+def test_a_large_grid_goes_in_the_body_not_the_url(monkeypatch):
+    """A few hundred points do not fit in a query string, and the failure
+    upstream is a 414 that explains nothing."""
+    n = 21
+    seen = {}
+
+    def _open(url, data=None, timeout=None):
+        seen["url"] = url
+        seen["data"] = data
+        return json.dumps({"samples": [
+            {"locationId": i, "value": "100.0", "resolution": 1}
+            for i in range(n * n)
+        ]}).encode()
+
+    monkeypatch.setattr(terrain, "_open", _open)
+    terrain.elevation_grid(46.9, -117.4, 0.0, 200.0, n)
+    assert seen["data"] is not None, "large request was not sent as a body"
+    assert "?" not in seen["url"]
+
+
+def test_grid_endpoint_validates_its_input(client):
+    for body in ({"lat": 46.9, "lon": -117.4, "n": 99},
+                 {"lat": 46.9, "lon": -117.4, "half_m": 9999},
+                 {"lat": 999, "lon": -117.4},
+                 {"lat": 46.9, "lon": -117.4, "surprise": 1}):
+        assert client.post("/api/elevation-grid", json=body).status_code == 422
+
+
+def test_grid_endpoint_returns_a_grid(client, monkeypatch):
+    n = 21
+    monkeypatch.setattr(terrain, "_open", _fake_samples([100.0] * (n * n)))
+    response = client.post("/api/elevation-grid",
+                           json={"lat": 46.9, "lon": -117.4, "n": n})
+    assert response.status_code == 200
+    body = response.get_json()
+    assert len(body["heights_m"]) == n * n
+    assert body["relief_m"] == pytest.approx(0.0)

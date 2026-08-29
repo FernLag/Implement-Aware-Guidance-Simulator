@@ -339,6 +339,14 @@ implements:
       note: >-
         Derived: 16 rows x 30 in (76 cm) row spacing, both as printed. Deere
         publishes the 12 ft folded transport width, not a working width.
+    row_spacing:
+      value: 0.762
+      unit: m
+      source: https://www.deere.com/en/planting-equipment/1775nt-16row30-planter/
+      note: >-
+        30 in row spacing as printed, the same figure the working width is
+        derived from. Drawn in the 3D view only; no simulation result depends
+        on it.
     mass:
       value: 11000
       unit: kg
@@ -385,6 +393,14 @@ implements:
       source: https://www.deere.com/en-us/products-and-solutions/planters/drawn-planters/1775nt-24row30-drawn-planter-njixwkg
       note: >-
         Derived: 24 rows x 30 in (76 cm) row spacing, both as printed.
+    row_spacing:
+      value: 0.762
+      unit: m
+      source: https://www.deere.com/en-us/products-and-solutions/planters/drawn-planters/1775nt-24row30-drawn-planter-njixwkg
+      note: >-
+        30 in row spacing as printed, the same figure the working width is
+        derived from. Drawn in the 3D view only; no simulation result depends
+        on it.
     mass:
       value: 15500
       unit: kg

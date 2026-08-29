@@ -74,6 +74,26 @@ theta' = (v / L) tan(delta)</pre>
     of error where the work itself costs centimetres, and describes the turn
     rather than the work. The turn is reported separately as its own number.</p>
 
+    <h2>What the 3D view draws, and what it does not</h2>
+    <p>Loading a field fetches two things from the USGS: the aerial photograph,
+    and ground height on a grid over the same square. The photograph is draped
+    over that height, so the ground in the view is the shape of the real
+    ground, and the machine, the worked swath and the guidance lines all sit on
+    it.</p>
+    <p><strong>The height grid is drawing only.</strong> The simulation is
+    driven by the side slope read along the guidance line, station by station,
+    which is a one dimensional profile. It does not integrate the machine over
+    the two dimensional surface, so the tractor in the view is standing on
+    ground the physics knows only as a cross slope at that station. The grid is
+    also coarse -- one request to a free public service, whose cost grows with
+    the square of its side -- so it carries the roll of the land and not the
+    tilth.</p>
+    <p>Rows are drawn only where the manufacturer publishes a row spacing,
+    which in this catalog is the two planters. Everything else leaves worked
+    ground with no rows on it. A disk harrow does not work in rows, and a
+    spacing invented for one that does not state a figure would appear on the
+    screen looking exactly as real as a sourced one.</p>
+
     <h2>What the results are checked against</h2>
     <p>Where a closed form exists, the simulation is compared with it rather than
     with its own earlier output. On a side slope, pure pursuit settles at</p>
@@ -90,6 +110,9 @@ theta' = (v / L) tan(delta)</pre>
       the catalog but refused by the simulator.</li>
       <li>Implement draft forces and ground contact, beyond a single figure used
       to check whether a pairing is feasible at all.</li>
+      <li>Driving over a two dimensional surface. Terrain enters the simulation
+      as a side slope along the line, not as a surface the machine is
+      integrated over, however the 3D view draws it.</li>
       <li>A planned headland turn. Passes are worked back and forth, and the
       machine does come round between them, but no turn is designed: at the end
       of a pass the guidance line is swapped for the next one and the same

@@ -84,6 +84,15 @@ def machine_geometry(tractor, implement, geometry) -> dict:
                                     "sourced": False},
             "frame_depth": {"value": round(max(0.8, geometry.working_width * 0.06), 3),
                             "sourced": False},
+            # Rows are drawn only where the manufacturer publishes a spacing.
+            # A disk harrow does not work in rows, and inventing a spacing for
+            # one that does not state it would put a fabricated number on the
+            # screen looking exactly like a real one.
+            "row_spacing": None if implement.row_spacing is None else {
+                "value": round(implement.row_spacing.value, 4),
+                "sourced": not implement.row_spacing.assumed,
+                "rows": int(round(geometry.working_width / implement.row_spacing.value)),
+            },
         }
 
     payload["drawing_only"] = [

@@ -59,7 +59,7 @@ def _tractor(record: dict) -> Tractor:
 _IMPLEMENT_KEYS = {
     "id", "manufacturer", "model", "type", "working_width", "mass",
     "hitch_distance", "implement_wheelbase", "draft_class", "working_depth",
-    "draft_power_per_width", "notes",
+    "draft_power_per_width", "row_spacing", "notes",
 }
 _TRACTOR_KEYS = {
     "id", "manufacturer", "model", "years", "wheelbase", "mass",
@@ -95,6 +95,7 @@ def _implement(record: dict) -> Implement:
         hitch_distance=_param(record, "hitch_distance", required=False),
         implement_wheelbase=_param(record, "implement_wheelbase", required=False),
         draft_class=record.get("draft_class"),
+        row_spacing=_param(record, "row_spacing", required=False),
         working_depth=_param(record, "working_depth", required=False),
         draft_power_per_width=_param(record, "draft_power_per_width", required=False),
         notes=record.get("notes"),

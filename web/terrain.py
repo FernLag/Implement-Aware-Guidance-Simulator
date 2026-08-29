@@ -279,7 +279,14 @@ def sample_elevations(points: list[tuple[float, float]]) -> list[float]:
         "returnFirstValueOnly": "true",
         "f": "json",
     })
-    blob = _open(SAMPLES_URL + "?" + query)
+    # A grid of several hundred points does not fit in a URL. Servers commonly
+    # cut off around 8 kB, and the failure is a 414 rather than anything that
+    # explains itself, so anything large goes in a request body instead.
+    if len(query) > 3000:
+        blob = _open(SAMPLES_URL, data=query.encode("ascii"),
+                     timeout=IMAGE_TIMEOUT)
+    else:
+        blob = _open(SAMPLES_URL + "?" + query)
     try:
         payload = json.loads(blob)
     except ValueError:
@@ -438,6 +445,67 @@ def slope_profile(lat: float, lon: float, heading_deg: float, length_m: float,
         "max_deg": round(max(degrees), 3),
         "mean_abs_deg": round(sum(abs(d) for d in degrees) / len(degrees), 3),
         "elevation_change_m": round(max(elevations) - min(elevations), 2),
+        "resolution_m": 1.0,
+        "attribution": ATTRIBUTION,
+    }
+
+
+GRID_MIN, GRID_MAX = 5, 21
+
+
+def elevation_grid(lat: float, lon: float, heading_deg: float,
+                   half_m: float, n: int = 17) -> dict:
+    """Ground height over a square of field, as an n x n grid.
+
+    `slope_profile` reads the ground along one line, which is all the
+    simulation needs. Drawing the ground needs it in two dimensions.
+
+    The frame matches the one the renderer and the imagery mapper already use:
+    x runs along the driving heading, y runs across it to the left, and the
+    centre of the grid is the requested coordinate. Heights are returned
+    relative to that centre point, so the numbers are relief in metres rather
+    than altitude above the sea, which is what the renderer wants and which
+    keeps them small.
+
+    Row major from the most negative y to the most positive, each row running
+    from the most negative x to the most positive.
+    """
+    n = max(GRID_MIN, min(GRID_MAX, int(n)))
+    half_m = max(20.0, min(600.0, float(half_m)))
+
+    psi = math.radians(heading_deg)
+    sin_p, cos_p = math.sin(psi), math.cos(psi)
+
+    metres_per_deg_lat = 111_320.0
+    metres_per_deg_lon = metres_per_deg_lat * max(0.05, math.cos(math.radians(lat)))
+
+    step = (2.0 * half_m) / (n - 1)
+    points = []
+    for j in range(n):
+        across = -half_m + j * step
+        for i in range(n):
+            along = -half_m + i * step
+            # Same transform as the imagery mapper, so the height grid and the
+            # photograph describe the same ground.
+            east = along * sin_p - across * cos_p
+            north = along * cos_p + across * sin_p
+            points.append((lon + east / metres_per_deg_lon,
+                           lat + north / metres_per_deg_lat))
+
+    heights = sample_elevations(points)
+    centre = heights[(n // 2) * n + (n // 2)]
+    relief = [round(h - centre, 3) for h in heights]
+
+    return {
+        "n": n,
+        "half_m": round(half_m, 2),
+        "step_m": round(step, 3),
+        "centre_elevation_m": round(centre, 2),
+        "heights_m": relief,
+        "min_m": round(min(relief), 2),
+        "max_m": round(max(relief), 2),
+        "relief_m": round(max(relief) - min(relief), 2),
+        "heading_deg": heading_deg,
         "resolution_m": 1.0,
         "attribution": ATTRIBUTION,
     }

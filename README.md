@@ -239,6 +239,11 @@ degree side slope:
 http://127.0.0.1:5050/?tractor=jd_6145r&implement=jd_1775nt_16row30&passes=6&pass_length=200&speed=3&slope_deg=8&slip=0.12
 ```
 
+Loading a field drapes the USGS aerial photograph over USGS ground height, so
+the machine works the real shape of the real field. That height grid is drawing
+only: the simulation is still driven by the side slope read along the guidance
+line, and the method page says so.
+
 Pick a tractor and implement from the catalog, set speed, side slope, slip and
 controller, and the page charts tractor cross-track error against implement
 edge error on the same axes. Results include skip between adjacent passes as a
