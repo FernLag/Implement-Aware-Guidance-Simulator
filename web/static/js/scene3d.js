@@ -36,6 +36,7 @@
   var SOLID_FS = [
     "precision mediump float;",
     "uniform vec3 uLight; uniform vec3 uFog; uniform float uFogStart;",
+    "uniform float uFogRange;",
     "varying vec3 vNormal; varying vec3 vColour; varying float vDepth;",
     "void main() {",
     "  vec3 n = normalize(vNormal);",
@@ -48,7 +49,7 @@
     "  base += vColour * 0.10 * max(n.z, 0.0);",
     "  float spec = pow(lambert, 26.0) * 0.35;",
     "  base += vec3(spec);",
-    "  float fog = clamp((vDepth - uFogStart) / 190.0, 0.0, 0.55);",
+    "  float fog = clamp((vDepth - uFogStart) / uFogRange, 0.0, 0.45);",
     "  gl_FragColor = vec4(mix(base, uFog, fog), 1.0);",
     "}"
   ].join("\n");
@@ -70,7 +71,7 @@
     "precision mediump float;",
     "uniform sampler2D uTex; uniform vec3 uLight; uniform vec3 uFog;",
     "uniform float uFogStart; uniform vec3 uTint; uniform float uUseTex;",
-    "uniform float uGrid;",
+    "uniform float uGrid; uniform float uFogRange;",
     "varying vec3 vNormal; varying vec2 vUV; varying float vDepth;",
     "varying vec2 vWorld;",
     // A five metre grid, drawn from world position so it is a real measure of
@@ -84,11 +85,11 @@
     "void main() {",
     "  vec3 n = normalize(vNormal);",
     "  vec3 albedo = mix(uTint, texture2D(uTex, vUV).rgb, uUseTex);",
-    "  float g = gridLine(vWorld, 5.0) * uGrid * (1.0 - clamp(vDepth / 120.0, 0.0, 0.85));",
+    "  float g = gridLine(vWorld, 5.0) * uGrid * (1.0 - clamp(vDepth / (uFogStart * 2.6), 0.0, 0.85));",
     "  albedo = mix(albedo, vec3(0.98, 0.96, 0.90), g * 0.30);",
     "  float lambert = max(dot(n, uLight), 0.0);",
     "  vec3 base = albedo * (0.55 + 0.45 * lambert);",
-    "  float fog = clamp((vDepth - uFogStart) / 190.0, 0.0, 0.6);",
+    "  float fog = clamp((vDepth - uFogStart) / uFogRange, 0.0, 0.45);",
     "  gl_FragColor = vec4(mix(base, uFog, fog), 1.0);",
     "}"
   ].join("\n");
@@ -107,8 +108,12 @@
   var FOG = [0.80, 0.83, 0.79];
 
   var COL = {
-    soil: [0.72, 0.67, 0.57],
-    worked: [0.40, 0.33, 0.25],
+    soil: [0.74, 0.69, 0.58],
+    // Freshly worked ground is much darker than the stubble beside it. The two
+    // were close enough in value that on a wide shot, once fog had washed both
+    // toward grey, the worked strip and the unworked strip read as one colour
+    // and the whole point of the picture was lost.
+    worked: [0.31, 0.24, 0.17],
     glass: [0.62, 0.68, 0.62],
     tyre: [0.13, 0.11, 0.09],
     lug: [0.09, 0.08, 0.06],
@@ -117,9 +122,9 @@
     beacon: [0.85, 0.60, 0.16],
     // The same olive and clay the charts use, so a colour means one thing
     // everywhere in this interface.
-    guide: [0.14, 0.11, 0.08],
-    guideIdle: [0.33, 0.30, 0.25],
-    headland: [0.30, 0.26, 0.19],
+    guide: [0.99, 0.85, 0.28],      // the line being followed right now
+    guideIdle: [0.86, 0.82, 0.70],  // the lines waiting their turn
+    headland: [0.52, 0.44, 0.31],
     trackTractor: [0.24, 0.33, 0.16],
     trackImplement: [0.55, 0.24, 0.09]
   };
@@ -445,11 +450,28 @@
 
   /* ---------------- ground, swath, shadow ---------------- */
 
-  function buildGround(mb, cx, tilt, terrain) {
+  function buildGround(mb, cx, tilt, terrain, plan, reach) {
     // Perspective-correct texturing is free here, so the grid exists only to
     // follow the tilt, not to hide affine distortion. It can therefore be
     // coarse where the canvas version had to be fine.
-    var half = 150, step = 10, x0 = Math.round((cx - 120) / step) * step;
+    // Big enough that the slab's own edge is never in shot. A field is far
+    // wider than the 300 m square that was enough for one endless line, and
+    // the edge of the world was visible in every wide view of one.
+    var half = 150, step = 10, span = 320, cxUse = cx, cy0 = 0;
+    if (plan) {
+      // The field view pulls the camera back far enough to hold the whole
+      // field, so the ground has to be sized from the field rather than from
+      // the machine, and centred on the field rather than on the tractor.
+      // Otherwise the slab's own edge sits in the middle of the shot.
+      var fieldSpan = Math.max(plan.length, plan.passes * plan.working_width);
+      span = Math.max(320, fieldSpan * 3.0);
+      half = Math.max(150, fieldSpan * 1.7);
+      step = Math.max(10, Math.round(Math.max(half, span) / 44));
+      cxUse = plan.length / 2;
+      cy0 = -(plan.passes - 1) * plan.working_width / 2;
+    }
+    var x0 = Math.round((cxUse - span * 0.5) / step) * step;
+    cy0 = Math.round(cy0 / step) * step;
     var map = terrain && terrain.map;
     var pixels = terrain && terrain.patch ? terrain.patch.pixels : 1;
     var nx = 0, ny = -Math.sin(tilt), nz = Math.cos(tilt);
@@ -459,8 +481,8 @@
       var uv = map ? map(x, y) : [0, 0];
       return { p: p, u: uv[0] / pixels, v: uv[1] / pixels };
     }
-    for (var gx = x0; gx < x0 + 320; gx += step) {
-      for (var gy = -half; gy < half; gy += step) {
+    for (var gx = x0; gx < x0 + span; gx += step) {
+      for (var gy = cy0 - half; gy < cy0 + half; gy += step) {
         var a = vertex(gx, gy), b = vertex(gx + step, gy);
         var c = vertex(gx + step, gy + step), d = vertex(gx, gy + step);
         // The ground contains (1,0,0) and (0,cos t,sin t), so its normal is
@@ -669,8 +691,13 @@
 
   Scene.prototype.useTexture = function (image) {
     var gl = this.gl;
-    if (this.textureSource === image) { return true; }
+    // "No image" must be answered before "same image as last time". With the
+    // order reversed, a run with no field loaded hit null === null, reported
+    // itself as textured, and the ground sampled an unbound texture unit --
+    // which returns black. The default ground rendered near-black instead of
+    // soil, and only distance fog made it look like anything at all.
     if (!image) { this.textureSource = null; return false; }
+    if (this.textureSource === image) { return true; }
     if (!this.texture) { this.texture = gl.createTexture(); }
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
@@ -735,20 +762,32 @@
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
 
     var eye = this.eyeFor(target);
+    // Depth precision is spent mostly between the near plane and a few times
+    // it. Holding near at 0.4 m while the camera retreats to survey a field
+    // leaves almost none of it where the geometry actually is.
+    var near = Math.max(0.4, this.distance * 0.012);
     var proj = window.GLMath.perspective(window.GLMath.create(), 0.85,
-      this.canvas.width / this.canvas.height, 0.4, 900);
+      this.canvas.width / this.canvas.height, near, Math.max(900, this.distance * 6));
     var view = window.GLMath.lookAt(window.GLMath.create(), eye, target, [0, 0, 1]);
     var viewProj = window.GLMath.multiply(window.GLMath.create(), proj, view);
     this.lastViewProj = viewProj;
     this.cssWidth = w;
     this.cssHeight = h;
 
+    // Fog has to follow the camera. Fixed at a 45 m start, a wide shot of a
+    // whole field sat entirely inside the fogged band, so every colour in the
+    // picture collapsed toward grey and the worked ground stopped being
+    // distinguishable from the unworked ground.
+    var fogStart = Math.max(45.0, this.distance * 0.85);
+    var fogRange = Math.max(190.0, this.distance * 2.2);
+
     // Ground.
     gl.useProgram(this.ground);
     gl.uniformMatrix4fv(gl.getUniformLocation(this.ground, "uViewProj"), false, viewProj);
     gl.uniform3fv(gl.getUniformLocation(this.ground, "uLight"), LIGHT);
     gl.uniform3fv(gl.getUniformLocation(this.ground, "uFog"), FOG);
-    gl.uniform1f(gl.getUniformLocation(this.ground, "uFogStart"), 45.0);
+    gl.uniform1f(gl.getUniformLocation(this.ground, "uFogStart"), fogStart);
+    gl.uniform1f(gl.getUniformLocation(this.ground, "uFogRange"), fogRange);
     gl.uniform3fv(gl.getUniformLocation(this.ground, "uTint"), COL.soil);
     var textured = this.useTexture(parts.texture);
     gl.uniform1f(gl.getUniformLocation(this.ground, "uUseTex"), textured ? 1.0 : 0.0);
@@ -761,7 +800,15 @@
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.ground);
     gl.bufferData(gl.ARRAY_BUFFER, parts.ground, gl.DYNAMIC_DRAW);
     bindAttribs(gl, this.ground, 8, [["aPos", 3, 0], ["aNormal", 3, 3], ["aUV", 2, 6]]);
+    // The swath and the track ribbons lie a few centimetres above the ground.
+    // Across a whole field the camera sits far enough back that the depth
+    // buffer cannot resolve that gap, and the two surfaces tear into each
+    // other in a speckle of stripes. Pushing the ground back in depth space
+    // settles the order by rule instead of by a margin that gets too small.
+    gl.enable(gl.POLYGON_OFFSET_FILL);
+    gl.polygonOffset(1.6, 4.0);
     gl.drawArrays(gl.TRIANGLES, 0, parts.ground.length / 8);
+    gl.disable(gl.POLYGON_OFFSET_FILL);
 
     // Swath, laid on the ground.
     if (parts.swath.length) {
@@ -769,7 +816,8 @@
       gl.uniformMatrix4fv(gl.getUniformLocation(this.solid, "uViewProj"), false, viewProj);
       gl.uniform3fv(gl.getUniformLocation(this.solid, "uLight"), LIGHT);
       gl.uniform3fv(gl.getUniformLocation(this.solid, "uFog"), FOG);
-      gl.uniform1f(gl.getUniformLocation(this.solid, "uFogStart"), 45.0);
+      gl.uniform1f(gl.getUniformLocation(this.solid, "uFogStart"), fogStart);
+      gl.uniform1f(gl.getUniformLocation(this.solid, "uFogRange"), fogRange);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.swath);
       gl.bufferData(gl.ARRAY_BUFFER, parts.swath, gl.DYNAMIC_DRAW);
       bindAttribs(gl, this.solid, 9, [["aPos", 3, 0], ["aNormal", 3, 3], ["aColour", 3, 6]]);
@@ -807,7 +855,8 @@
     gl.uniformMatrix4fv(gl.getUniformLocation(this.solid, "uViewProj"), false, viewProj);
     gl.uniform3fv(gl.getUniformLocation(this.solid, "uLight"), LIGHT);
     gl.uniform3fv(gl.getUniformLocation(this.solid, "uFog"), FOG);
-    gl.uniform1f(gl.getUniformLocation(this.solid, "uFogStart"), 45.0);
+    gl.uniform1f(gl.getUniformLocation(this.solid, "uFogStart"), fogStart);
+    gl.uniform1f(gl.getUniformLocation(this.solid, "uFogRange"), fogRange);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.solid);
     gl.bufferData(gl.ARRAY_BUFFER, parts.machine, gl.DYNAMIC_DRAW);
     bindAttribs(gl, this.solid, 9, [["aPos", 3, 0], ["aNormal", 3, 3], ["aColour", 3, 6]]);
@@ -870,16 +919,8 @@
         buildImplement(machine, im, hx, hy, ix, iy, pose.theta, pose.thetaImplement, tilt);
       }
 
-      var groundMb = new Builder();
-      buildGround(groundMb, pose.x, tilt, terrain);
-
-      var swathMb = new Builder();
-      if (im) {
-        buildSwath(swathMb, s, frame, tilt, im.hitch_distance.value,
-          im.implement_wheelbase.value, im.working_width.value / 2, plan);
-      }
-      buildTracks(swathMb, s, frame, tilt, im, plan);
-
+      // How much the view has to hold. Worked out before the ground is built,
+      // because the ground is sized from it.
       var span = Math.max(g.wheelbase.value * 2.2,
         im ? im.working_width.value : 0,
         im ? (im.hitch_distance.value + im.implement_wheelbase.value +
@@ -894,6 +935,16 @@
       }
       scene.frame(span);
 
+      var groundMb = new Builder();
+      buildGround(groundMb, pose.x, tilt, terrain, plan, span);
+
+      var swathMb = new Builder();
+      if (im) {
+        buildSwath(swathMb, s, frame, tilt, im.hitch_distance.value,
+          im.implement_wheelbase.value, im.working_width.value / 2, plan);
+      }
+      buildTracks(swathMb, s, frame, tilt, im, plan);
+
       // Figures standing at fixed points along the headland, well clear of the
       // widest implement in the catalog, so the machine passes them rather
       // than carrying them along.
@@ -906,6 +957,17 @@
       var back = im ? (im.hitch_distance.value + im.implement_wheelbase.value) * 0.5 : 0;
       var target = place([pose.x - back * Math.cos(pose.theta),
                           pose.y - back * Math.sin(pose.theta), 1.4], [0, 0], 0, tilt);
+
+      // Looking down at a field, frame the field. Keeping the camera locked to
+      // the machine put the tractor in one corner with the worked ground
+      // running off the opposite edge, which is the one view where the whole
+      // pattern is the thing worth seeing. Behind and Side still follow the
+      // machine, because there the machine is the subject.
+      if (plan && scene.mode === "top") {
+        var fieldY = -(plan.passes - 1) * plan.working_width / 2;
+        scene.frame(Math.max(plan.length, plan.passes * plan.working_width) * 0.92);
+        target = place([plan.length / 2, fieldY, 0.0], [0, 0], 0, tilt);
+      }
 
       scene.draw({
         machine: new Float32Array(machine.data),

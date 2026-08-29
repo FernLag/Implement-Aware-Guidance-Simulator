@@ -223,6 +223,22 @@ cp .env.example .env          # then set AGGSIM_SECRET_KEY
 python3 wsgi.py               # http://127.0.0.1:5000
 ```
 
+On macOS, port 5000 is taken by the AirPlay Receiver, and the server will exit
+with `Address already in use`. Either turn that off in System Settings under
+General, AirDrop & Handoff, or pick another port:
+
+```bash
+AGGSIM_PORT=5050 python3 wsgi.py    # http://127.0.0.1:5050
+```
+
+Settings can be passed in the address bar, and a link that carries them runs
+itself on load. This one works six passes of a 12.19 m planter across an eight
+degree side slope:
+
+```
+http://127.0.0.1:5050/?tractor=jd_6145r&implement=jd_1775nt_16row30&passes=6&pass_length=200&speed=3&slope_deg=8&slip=0.12
+```
+
 Pick a tractor and implement from the catalog, set speed, side slope, slip and
 controller, and the page charts tractor cross-track error against implement
 edge error on the same axes. Results include skip between adjacent passes as a

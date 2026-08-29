@@ -306,10 +306,13 @@
       warn.hidden = true;
     }
 
-    var lines = [{ key: "cross_track", label: "Tractor cross-track error", colour: COLOURS.tractor, dash: null }];
+    var lines = [{ key: "cross_track", label: "Tractor cross-track error",
+                   colour: COLOURS.tractor, cls: "swatch-tractor", dash: null }];
     if (s.implement_cross_track) {
-      lines.push({ key: "implement_cross_track", label: "Implement centreline", colour: COLOURS.centre, dash: "5 4" });
-      lines.push({ key: "worst_edge", label: "Worst implement edge", colour: COLOURS.implement, dash: null });
+      lines.push({ key: "implement_cross_track", label: "Implement centreline",
+                   colour: COLOURS.centre, cls: "swatch-centre", dash: "5 4" });
+      lines.push({ key: "worst_edge", label: "Worst implement edge",
+                   colour: COLOURS.implement, cls: "swatch-implement", dash: null });
     }
 
     setupScene(data);
@@ -528,7 +531,7 @@
 
   function drawLegend(lines) {
     document.getElementById("legend").innerHTML = lines.map(function (ln) {
-      return '<li><span class="swatch" style="background:' + ln.colour + '"></span>' + ln.label + "</li>";
+      return '<li><span class="swatch ' + ln.cls + '"></span>' + ln.label + "</li>";
     }).join("");
   }
 

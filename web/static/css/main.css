@@ -191,6 +191,12 @@ input:hover, select:hover, textarea:hover { border-color: var(--soil-600); }
 .legend { display: flex; gap: var(--s4); list-style: none; padding: var(--s3) 0 0; margin: 0; flex-wrap: wrap; font-size: 0.88rem; }
 .legend li { display: flex; align-items: center; gap: var(--s2); }
 .legend .swatch { width: 22px; height: 3px; display: inline-block; }
+/* Swatch colours live here rather than in a style attribute. The Content
+   Security Policy sets style-src 'self', which blocks inline styles outright,
+   so a swatch painted from JavaScript rendered as a blank gap in the legend. */
+.legend .swatch-tractor { background: #4C5A3A; }
+.legend .swatch-centre { background: #C08A63; }
+.legend .swatch-implement { background: #A35A32; }
 
 .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--s3); margin-bottom: var(--s4); }
 .metric { border: 1px solid var(--rule); border-top: 3px solid var(--soil-600); padding: var(--s3); background: var(--paper); }
