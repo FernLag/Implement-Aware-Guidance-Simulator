@@ -334,6 +334,11 @@ thead th { border-bottom: 2px solid var(--soil-400); font-family: var(--mono); f
   font-family: var(--mono); font-size: 0.85rem; color: var(--soil-600);
   min-width: 5.5ch; text-align: right;
 }
+.scene-rate select {
+  font-family: inherit; font-size: 0.85rem; padding: 0.2rem 0.4rem;
+  color: var(--soil-800); background: var(--paper);
+  border: 1px solid var(--soil-400); border-radius: 2px;
+}
 
 .btn-sm { padding: 0.4rem 0.85rem; font-size: 0.86rem; }
 

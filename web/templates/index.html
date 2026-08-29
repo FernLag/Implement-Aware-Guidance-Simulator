@@ -241,6 +241,15 @@
                 <input type="range" id="scene-time" min="0" max="100" value="0" step="1">
               </label>
               <span class="scene-clock" id="scene-clock" role="status" aria-live="polite">0.0 s</span>
+              <label class="scene-rate">
+                <span class="visually-hidden">Playback speed</span>
+                <select id="scene-rate">
+                  <option value="1">Real time</option>
+                  <option value="4" selected>4x</option>
+                  <option value="10">10x</option>
+                  <option value="25">25x</option>
+                </select>
+              </label>
             </div>
 
             <p class="field checkbox scene-toggle">

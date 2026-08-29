@@ -182,10 +182,55 @@
      is standing on; a machine is rigid and sits at one height. */
   var HEIGHT_AT = null;
   var HEIGHT_LOCK = null;
+  var MESH = null;
+
+  /* Where the ground mesh will be built. Everything laid on the ground reads
+     its height through the SAME triangulation the ground is tessellated with,
+     so a point on a facet gets exactly that facet's height.
+
+     This matters more than it sounds. The height data is smooth, but the
+     ground is drawn as flat triangles between samples, and over real terrain
+     a flat triangle departs from the smooth surface by a long way -- measured
+     at up to 81 cm on the Palouse grid at an 11 m mesh. The tracks sat 5 cm
+     above the smooth surface, which put them most of a metre underneath the
+     triangles actually being drawn, and the trace disappeared into the hill.
+     Refining the mesh only shrinks that; matching the interpolation removes
+     it. */
+  function meshFor(cx, plan, reach) {
+    var half = 150, span = 320, cxUse = cx, cy = 0;
+    if (plan) {
+      var fieldSpan = Math.max(plan.length, plan.passes * plan.working_width);
+      span = Math.max(320, fieldSpan * 3.0);
+      half = Math.max(150, fieldSpan * 1.7);
+      cxUse = plan.length / 2;
+      cy = -(plan.passes - 1) * plan.working_width / 2;
+    }
+    // Bounded cell count, so a large field costs the same as a small one.
+    var step = Math.max(4.0, Math.max(span, 2 * half) / 90);
+    return {
+      step: step,
+      x0: Math.round((cxUse - span * 0.5) / step) * step,
+      y0: Math.round((cy - half) / step) * step,
+      span: span, half: half
+    };
+  }
 
   function groundHeight(x, y) {
     if (HEIGHT_LOCK !== null) { return HEIGHT_LOCK; }
-    return HEIGHT_AT ? HEIGHT_AT(x, y) : 0;
+    if (!HEIGHT_AT) { return 0; }
+    if (!MESH) { return HEIGHT_AT(x, y); }
+
+    var st = MESH.step;
+    var fx = (x - MESH.x0) / st, fy = (y - MESH.y0) / st;
+    var i = Math.floor(fx), j = Math.floor(fy);
+    var tx = fx - i, ty = fy - j;
+    var X = MESH.x0 + i * st, Y = MESH.y0 + j * st;
+    var h00 = HEIGHT_AT(X, Y), h10 = HEIGHT_AT(X + st, Y);
+    var h11 = HEIGHT_AT(X + st, Y + st), h01 = HEIGHT_AT(X, Y + st);
+    // buildGround emits (a,b,c) and (a,c,d) with a=(0,0) b=(1,0) c=(1,1)
+    // d=(0,1), so the diagonal runs a-c and the halves split on tx vs ty.
+    if (tx >= ty) { return h00 + (h10 - h00) * tx + (h11 - h10) * ty; }
+    return h00 + (h11 - h01) * tx + (h01 - h00) * ty;
   }
 
   function place(local, origin, yaw, tilt) {
@@ -494,28 +539,15 @@
 
   /* ---------------- ground, swath, shadow ---------------- */
 
-  function buildGround(mb, cx, tilt, terrain, plan, reach) {
+  function buildGround(mb, mesh, tilt, terrain) {
     // Perspective-correct texturing is free here, so the grid exists only to
-    // follow the tilt, not to hide affine distortion. It can therefore be
-    // coarse where the canvas version had to be fine.
-    // Big enough that the slab's own edge is never in shot. A field is far
-    // wider than the 300 m square that was enough for one endless line, and
-    // the edge of the world was visible in every wide view of one.
-    var half = 150, step = 10, span = 320, cxUse = cx, cy0 = 0;
-    if (plan) {
-      // The field view pulls the camera back far enough to hold the whole
-      // field, so the ground has to be sized from the field rather than from
-      // the machine, and centred on the field rather than on the tractor.
-      // Otherwise the slab's own edge sits in the middle of the shot.
-      var fieldSpan = Math.max(plan.length, plan.passes * plan.working_width);
-      span = Math.max(320, fieldSpan * 3.0);
-      half = Math.max(150, fieldSpan * 1.7);
-      step = Math.max(10, Math.round(Math.max(half, span) / 44));
-      cxUse = plan.length / 2;
-      cy0 = -(plan.passes - 1) * plan.working_width / 2;
-    }
-    var x0 = Math.round((cxUse - span * 0.5) / step) * step;
-    cy0 = Math.round(cy0 / step) * step;
+    // follow the tilt, not to hide affine distortion.
+    //
+    // Sized and positioned by meshFor, which every ground-height lookup also
+    // consults, so the surface drawn here and the surface everything else is
+    // laid on cannot disagree.
+    var step = mesh.step, span = mesh.span, half = mesh.half;
+    var x0 = mesh.x0, y0 = mesh.y0;
     var map = terrain && terrain.map;
     var pixels = terrain && terrain.patch ? terrain.patch.pixels : 1;
     var flatNx = 0, flatNy = -Math.sin(tilt), flatNz = Math.cos(tilt);
@@ -542,7 +574,7 @@
                nx: nx, ny: ny, nz: nz };
     }
     for (var gx = x0; gx < x0 + span; gx += step) {
-      for (var gy = cy0 - half; gy < cy0 + half; gy += step) {
+      for (var gy = y0; gy < y0 + 2 * half; gy += step) {
         var a = vertex(gx, gy), b = vertex(gx + step, gy);
         var c = vertex(gx + step, gy + step), d = vertex(gx, gy + step);
         // On flat ground the normal is (0, -sin t, cos t) everywhere; over
@@ -1011,6 +1043,7 @@
       // ground itself all agree about where the surface is.
       HEIGHT_AT = (terrain && terrain.height) || null;
       HEIGHT_LOCK = null;
+      MESH = null;
 
       var pose = {
         x: s.x[frame], y: s.y[frame], theta: s.theta[frame],
@@ -1020,9 +1053,13 @@
         thetaImplement: s.theta_implement ? s.theta_implement[frame] : s.theta[frame]
       };
 
+      // Settled before anything asks how high the ground is, because every
+      // such answer is defined relative to this mesh.
+      MESH = meshFor(pose.x, plan, 0);
+
       // The machine is rigid: it sits at one height rather than draping over
       // the ground the way the swath does.
-      var machineH = HEIGHT_AT ? HEIGHT_AT(pose.x, pose.y) : 0;
+      var machineH = groundHeight(pose.x, pose.y);
       HEIGHT_LOCK = machineH;
 
       var machine = new Builder();
@@ -1057,7 +1094,7 @@
       HEIGHT_LOCK = null;
 
       var groundMb = new Builder();
-      buildGround(groundMb, pose.x, tilt, terrain, plan, span);
+      buildGround(groundMb, MESH, tilt, terrain);
 
       var swathMb = new Builder();
       if (im) {
@@ -1083,7 +1120,7 @@
       figures.forEach(function (f) {
         // Each figure stands upright on the ground where it is, rather than
         // leaning with the slope under it.
-        HEIGHT_LOCK = HEIGHT_AT ? HEIGHT_AT(f[0], -offset) : 0;
+        HEIGHT_LOCK = groundHeight(f[0], -offset);
         buildScaleFigure(machine, f[0], offset, tilt);
         HEIGHT_LOCK = null;
       });

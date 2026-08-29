@@ -36,9 +36,9 @@ function check(name, ok, detail) {
 
 /* The headless scene comes from the renderer itself, so it cannot drift out of
  * step with what render() calls. A stub maintained here did, twice. */
-function capture(data, frame) {
+function capture(data, frame, terrain) {
   const scene = window.GuidanceScene.headless();
-  window.GuidanceScene.render(scene, data, frame);
+  window.GuidanceScene.render(scene, data, frame, terrain);
   return scene.parts;
 }
 
@@ -137,6 +137,75 @@ if (field) {
   );
   check("field ground budget", late.swath.length / 27 < 20000,
         `${(late.swath.length / 27).toFixed(0)} ground triangles is too many`);
+}
+
+/* THE TRACKS MUST SIT ON THE GROUND, NOT INSIDE IT.
+ *
+ * The ground is drawn as flat triangles between height samples, while the
+ * tracks and the worked swath are laid on the surface those samples describe.
+ * If the two use different interpolations, the flat triangle can stand a long
+ * way above the smooth surface -- measured at up to 81 cm on real Palouse
+ * terrain -- and the trace vanishes into the hillside wherever it does.
+ *
+ * A picture will not show this reliably: it depends on the camera angle and it
+ * looks like an ordinary depth artifact. The geometry shows it exactly. */
+if (field) {
+  // A smooth analytic surface with real curvature, so the check does not
+  // depend on the network.
+  const bumpy = (x, y) =>
+    6 * Math.sin(x / 37) + 4 * Math.cos(y / 29) + 2 * Math.sin((x + y) / 19);
+
+  const flat = JSON.parse(JSON.stringify(field));
+  flat.scene.slope_deg = 0;  // so a vertex's z is its height, nothing else
+  const p = capture(flat, flat.series.x.length - 1,
+                    { height: bumpy, map: null, patch: null });
+
+  // Ground triangles, as (x, y) -> plane.
+  const tris = [];
+  for (let i = 0; i < p.ground.length; i += 24) {
+    const v = [];
+    for (let k = 0; k < 3; k++) {
+      v.push([p.ground[i + k * 8], p.ground[i + k * 8 + 1], p.ground[i + k * 8 + 2]]);
+    }
+    tris.push(v);
+  }
+
+  function groundZAt(x, y) {
+    for (const t of tris) {
+      const [a, b, c] = t;
+      const d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
+      if (Math.abs(d) < 1e-12) { continue; }
+      const w0 = ((b[1] - c[1]) * (x - c[0]) + (c[0] - b[0]) * (y - c[1])) / d;
+      const w1 = ((c[1] - a[1]) * (x - c[0]) + (a[0] - c[0]) * (y - c[1])) / d;
+      const w2 = 1 - w0 - w1;
+      if (w0 >= -1e-9 && w1 >= -1e-9 && w2 >= -1e-9) {
+        return w0 * a[2] + w1 * b[2] + w2 * c[2];
+      }
+    }
+    return null;
+  }
+
+  let buried = 0, worst = 0, tested = 0;
+  for (let i = 0; i < p.swath.length; i += 9 * 37) {
+    const x = p.swath[i], y = p.swath[i + 1], z = p.swath[i + 2];
+    const gz = groundZAt(x, y);
+    if (gz === null) { continue; }
+    tested++;
+    const clearance = z - gz;
+    if (clearance < worst || tested === 1) { worst = clearance; }
+    if (clearance < -0.001) { buried++; }
+  }
+
+  check("tracks were actually sampled", tested > 20,
+        `only ${tested} overlay vertices landed on a ground triangle`);
+  check("tracks sit on the ground", buried === 0,
+        `${buried} of ${tested} overlay vertices are below the ground surface, ` +
+        `worst ${(worst * 100).toFixed(1)} cm under`);
+
+  console.log(
+    `terrain: ${tested} overlay vertices checked against the ground, ` +
+    `least clearance ${(worst * 100).toFixed(2)} cm`
+  );
 }
 
 console.log();

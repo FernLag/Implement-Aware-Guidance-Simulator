@@ -824,16 +824,43 @@
     btn.textContent = on ? "Pause" : "Play";
     btn.setAttribute("aria-pressed", on ? "true" : "false");
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    // Reset the clock so a pause does not bank elapsed time and lurch on
+    // resume.
+    lastTime = 0;
+    framePos = 0;
     if (on) { rafId = requestAnimationFrame(tick); }
   }
 
-  var lastTime = 0;
+  /* PLAYBACK IS PACED BY SIMULATED TIME, NOT BY SAMPLES.
+     Advancing one sample per animation frame makes the apparent speed depend
+     on how much simulated time a sample happens to cover. Every run is
+     downsampled to the same number of points, so a one minute pass played at
+     about two and a half times real time while a six pass field -- eight times
+     longer, same number of points -- played at twenty, and the tractor looked
+     like it was doing 60 m/s. The rate below is a stated multiple of real
+     time and holds whatever the run length. */
+  var lastTime = 0, framePos = 0;
+
+  function playbackRate() {
+    var sel = document.getElementById("scene-rate");
+    return sel ? (parseFloat(sel.value) || 1) : 1;
+  }
+
   function tick(now) {
     if (!playing || !sceneData) { return; }
-    if (now - lastTime > 40) {
-      lastTime = now;
-      var next = frame + 1;
-      if (next >= sceneData.series.t.length) { next = 0; }
+    var t = sceneData.series.t;
+    if (!lastTime) { lastTime = now; }
+    // Clamped, so a tab that was in the background does not jump the machine
+    // across the field on the first frame back.
+    var elapsed = Math.min(0.25, (now - lastTime) / 1000);
+    lastTime = now;
+
+    var perSample = t.length > 1 ? (t[1] - t[0]) : 0.1;
+    framePos += elapsed * playbackRate() / perSample;
+    if (framePos >= 1) {
+      var next = frame + Math.floor(framePos);
+      framePos -= Math.floor(framePos);
+      if (next >= t.length) { next = 0; }
       drawFrame(next);
     }
     rafId = requestAnimationFrame(tick);
