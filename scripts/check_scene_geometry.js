@@ -151,9 +151,13 @@ if (field) {
  * looks like an ordinary depth artifact. The geometry shows it exactly. */
 if (field) {
   // A smooth analytic surface with real curvature, so the check does not
-  // depend on the network.
+  // depend on the network. Scaled to farmland: the steepest gradient here is
+  // about 0.26, or 15 degrees, which is at the top end of what is worked. An
+  // earlier version used wavelengths of 20 to 40 m at the same amplitudes,
+  // giving 45 degree slopes -- ground no tractor would be on, and it made the
+  // check fail on terrain rather than on a defect.
   const bumpy = (x, y) =>
-    6 * Math.sin(x / 37) + 4 * Math.cos(y / 29) + 2 * Math.sin((x + y) / 19);
+    6 * Math.sin(x / 60) + 4 * Math.cos(y / 45) + 2 * Math.sin((x + y) / 30);
 
   const flat = JSON.parse(JSON.stringify(field));
   flat.scene.slope_deg = 0;  // so a vertex's z is its height, nothing else
@@ -185,25 +189,66 @@ if (field) {
     return null;
   }
 
-  let buried = 0, worst = 0, tested = 0;
-  for (let i = 0; i < p.swath.length; i += 9 * 37) {
-    const x = p.swath[i], y = p.swath[i + 1], z = p.swath[i + 2];
+  /* Vertices AND triangle interiors. The tear that prompted this was in the
+   * middle of a quad, not at its corners: the swath is as wide as the
+   * implement and was emitted as one flat quad, so its corners sat correctly
+   * on the surface while its middle passed underneath a ridge. Checking only
+   * vertices would have called that clean. */
+  let buried = 0, worst = Infinity, tested = 0;
+  function probe(x, y, z) {
     const gz = groundZAt(x, y);
-    if (gz === null) { continue; }
+    if (gz === null) { return; }
     tested++;
     const clearance = z - gz;
-    if (clearance < worst || tested === 1) { worst = clearance; }
+    if (clearance < worst) { worst = clearance; }
     if (clearance < -0.001) { buried++; }
   }
+  for (let i = 0; i + 26 < p.swath.length; i += 27 * 7) {
+    const v = [];
+    for (let k = 0; k < 3; k++) {
+      v.push([p.swath[i + k * 9], p.swath[i + k * 9 + 1], p.swath[i + k * 9 + 2]]);
+    }
+    v.forEach(q => probe(q[0], q[1], q[2]));
+    probe((v[0][0] + v[1][0] + v[2][0]) / 3,
+          (v[0][1] + v[1][1] + v[2][1]) / 3,
+          (v[0][2] + v[1][2] + v[2][2]) / 3);
+    // Edge midpoints too: a long thin triangle can dip between its corners.
+    for (let k = 0; k < 3; k++) {
+      const a = v[k], b = v[(k + 1) % 3];
+      probe((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
+    }
+  }
 
-  check("tracks were actually sampled", tested > 20,
-        `only ${tested} overlay vertices landed on a ground triangle`);
+  check("tracks were actually sampled", tested > 100,
+        `only ${tested} overlay points landed on a ground triangle`);
   check("tracks sit on the ground", buried === 0,
-        `${buried} of ${tested} overlay vertices are below the ground surface, ` +
+        `${buried} of ${tested} overlay points are below the ground surface, ` +
         `worst ${(worst * 100).toFixed(1)} cm under`);
 
+  /* THE MACHINE MUST STAND ON THE GROUND TOO. Pinned to a single height, the
+   * front tyres of a tractor on a slope bury themselves to the hub. */
+  let lowest = Infinity, highest = -Infinity, machineTested = 0;
+  for (let i = 0; i < p.machine.length; i += 9 * 11) {
+    const x = p.machine[i], y = p.machine[i + 1], z = p.machine[i + 2];
+    const gz = groundZAt(x, y);
+    if (gz === null) { continue; }
+    machineTested++;
+    lowest = Math.min(lowest, z - gz);
+    highest = Math.max(highest, z - gz);
+  }
+  if (machineTested > 20) {
+    // A wheel rim may sit a little proud or a fraction below by the mesh's
+    // own facet error, but nothing should be a wheel-radius deep.
+    check("the machine stands on the ground", lowest > -0.35,
+          `a machine vertex is ${(-lowest).toFixed(2)} m below the surface, ` +
+          "which is a tyre buried in the hillside");
+    console.log(
+      `terrain: machine sits between ${lowest.toFixed(2)} m and ` +
+      `${highest.toFixed(2)} m of the ground over ${machineTested} points`);
+  }
+
   console.log(
-    `terrain: ${tested} overlay vertices checked against the ground, ` +
+    `terrain: ${tested} overlay points (corners, edges and interiors) checked, ` +
     `least clearance ${(worst * 100).toFixed(2)} cm`
   );
 }

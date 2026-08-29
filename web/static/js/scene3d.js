@@ -183,19 +183,30 @@
   var HEIGHT_AT = null;
   var HEIGHT_LOCK = null;
   var MESH = null;
+  var BODY_PLANE = null;
 
+  /* A rigid machine standing on sloping ground.
+
+     Pinning the whole outfit to the height under the rear axle is right for
+     the height and wrong for everything else: at nine degrees the ground under
+     the front axle is 0.44 m from the ground under the rear, and a wheel is
+     about a metre across, so the front tyres bury themselves to the hub. The
+     implement, six metres further back again, is worse.
+
+     So the outfit stands on a PLANE fitted to the ground beneath it, rather
+     than on a single number. One plane for the whole outfit, not one per body:
+     a tractor and its implement are coupled, and giving them separate heights
+     tears the drawbar in half at the hitch. A real drawbar does articulate
+     vertically, but it does not come apart. */
   /* Where the ground mesh will be built. Everything laid on the ground reads
      its height through the SAME triangulation the ground is tessellated with,
      so a point on a facet gets exactly that facet's height.
 
-     This matters more than it sounds. The height data is smooth, but the
-     ground is drawn as flat triangles between samples, and over real terrain
-     a flat triangle departs from the smooth surface by a long way -- measured
-     at up to 81 cm on the Palouse grid at an 11 m mesh. The tracks sat 5 cm
-     above the smooth surface, which put them most of a metre underneath the
-     triangles actually being drawn, and the trace disappeared into the hill.
-     Refining the mesh only shrinks that; matching the interpolation removes
-     it. */
+     The height data is smooth, but the ground is drawn as flat triangles
+     between samples, and over real terrain a flat triangle departs from the
+     smooth surface by a long way -- measured at up to 81 cm on the Palouse
+     grid. Matching the interpolation removes that; refining the mesh only
+     shrinks it. */
   function meshFor(cx, plan, reach) {
     var half = 150, span = 320, cxUse = cx, cy = 0;
     if (plan) {
@@ -216,6 +227,12 @@
   }
 
   function groundHeight(x, y) {
+    // A machine standing on the ground rides the plane fitted under it, so
+    // every wheel touches down and the outfit stays in one piece.
+    if (BODY_PLANE) {
+      return BODY_PLANE.h0 + BODY_PLANE.gx * (x - BODY_PLANE.x0)
+                           + BODY_PLANE.gy * (y - BODY_PLANE.y0);
+    }
     if (HEIGHT_LOCK !== null) { return HEIGHT_LOCK; }
     if (!HEIGHT_AT) { return 0; }
     if (!MESH) { return HEIGHT_AT(x, y); }
@@ -231,6 +248,57 @@
     // d=(0,1), so the diagonal runs a-c and the halves split on tx vs ty.
     if (tx >= ty) { return h00 + (h10 - h00) * tx + (h11 - h10) * ty; }
     return h00 + (h11 - h01) * tx + (h01 - h00) * ty;
+  }
+
+  function fitGroundPlane(points) {
+    // Least squares z = a + b x + c y over the machine's own footprint.
+    var n = points.length;
+    var sx = 0, sy = 0, sz = 0, sxx = 0, syy = 0, sxy = 0, sxz = 0, syz = 0;
+    for (var i = 0; i < n; i++) {
+      var x = points[i][0], y = points[i][1], z = HEIGHT_AT(x, y);
+      sx += x; sy += y; sz += z;
+      sxx += x * x; syy += y * y; sxy += x * y;
+      sxz += x * z; syz += y * z;
+    }
+    var cxx = sxx - sx * sx / n, cyy = syy - sy * sy / n;
+    var cxy = sxy - sx * sy / n;
+    var cxz = sxz - sx * sz / n, cyz = syz - sy * sz / n;
+    var det = cxx * cyy - cxy * cxy;
+    var gx = 0, gy = 0;
+    if (Math.abs(det) > 1e-9) {
+      gx = (cxz * cyy - cyz * cxy) / det;
+      gy = (cyz * cxx - cxz * cxy) / det;
+    }
+    var x0 = sx / n, y0 = sy / n;
+    return { x0: x0, y0: y0, h0: sz / n, gx: gx, gy: gy };
+  }
+
+  /* Where the outfit touches down: both axles, both tracks, and the implement
+     axle if there is one. Fitting to these rather than to a fixed square means
+     the plane follows the machine that is actually standing on it. */
+  function outfitFootprint(pose, g, im) {
+    var c = Math.cos(pose.theta), s = Math.sin(pose.theta);
+    var L = g.wheelbase.value, half = (g.track_width.value || 2.2) / 2;
+    var pts = [];
+    [0, L].forEach(function (ax) {
+      [-half, half].forEach(function (side) {
+        pts.push([pose.x + ax * c - side * s, pose.y + ax * s + side * c]);
+      });
+    });
+    if (im) {
+      var a = im.hitch_distance.value;
+      var reach = im.type === "trailed" ? im.implement_wheelbase.value
+                                        : MOUNTED_LINKAGE_M;
+      var hx = pose.x - a * Math.cos(pose.theta);
+      var hy = pose.y - a * Math.sin(pose.theta);
+      var ix = hx - reach * Math.cos(pose.thetaImplement);
+      var iy = hy - reach * Math.sin(pose.thetaImplement);
+      var w = im.working_width.value / 2;
+      var ic = Math.cos(pose.thetaImplement), is = Math.sin(pose.thetaImplement);
+      pts.push([ix - w * is * 0.5, iy + w * ic * 0.5]);
+      pts.push([ix + w * is * 0.5, iy - w * ic * 0.5]);
+    }
+    return pts;
   }
 
   function place(local, origin, yaw, tilt) {
@@ -602,12 +670,35 @@
      where the guidance line is, where the tractor actually went, and where the
      implement centre actually went. Drawn as thin ribbons rather than lines,
      because a GL line has no width you can rely on. */
+  /* Longest piece of ground overlay that may be drawn as one flat quad.
+     Placing the CORNERS on the surface is not enough: a flat quad spanning
+     several curved cells still cuts underneath every ridge between them, and
+     the ground shows through in ragged holes. Anything longer than about half
+     a mesh cell gets subdivided. */
+  function maxSegment() {
+    return (HEIGHT_AT && MESH) ? MESH.step * 0.5 : Infinity;
+  }
+
   function ribbon(mb, points, tilt, halfWidth, colour, height) {
+    var limit = maxSegment();
     for (var i = 0; i < points.length - 1; i++) {
-      var p = points[i], q = points[i + 1];
+      var p0 = points[i], q0 = points[i + 1];
+      var span = Math.hypot(q0[0] - p0[0], q0[1] - p0[1]);
+      var pieces = Math.max(1, Math.ceil(span / limit));
+      for (var k = 0; k < pieces; k++) {
+        var t0 = k / pieces, t1 = (k + 1) / pieces;
+        var p = [p0[0] + (q0[0] - p0[0]) * t0, p0[1] + (q0[1] - p0[1]) * t0];
+        var q = [p0[0] + (q0[0] - p0[0]) * t1, p0[1] + (q0[1] - p0[1]) * t1];
+        ribbonSegment(mb, p, q, tilt, halfWidth, colour, height);
+      }
+    }
+  }
+
+  function ribbonSegment(mb, p, q, tilt, halfWidth, colour, height) {
+    {
       var dx = q[0] - p[0], dy = q[1] - p[1];
       var len = Math.hypot(dx, dy);
-      if (len < 1e-6) { continue; }
+      if (len < 1e-6) { return; }
       var nx = -dy / len * halfWidth, ny = dx / len * halfWidth;
       mb.quad(place([p[0] + nx, p[1] + ny, height], [0, 0], 0, tilt),
               place([q[0] + nx, q[1] + ny, height], [0, 0], 0, tilt),
@@ -681,7 +772,7 @@
   function buildRows(mb, s, upTo, tilt, a, b, halfWidth, spacing, plan) {
     var rows = Math.floor((halfWidth * 2) / spacing);
     if (rows < 2 || rows > 64) { return; }
-    var step = Math.max(1, Math.floor(upTo / (plan ? 150 : 90)));
+    var step = Math.max(1, Math.floor(upTo / (plan ? 220 : 120)));
     var from = plan ? 0 : Math.max(0, upTo - 2200);
     // Offsets of each row unit from the implement centre.
     var offsets = [];
@@ -702,17 +793,51 @@
     }
   }
 
+  /* The worked ground.
+     THIS IS THE ONE THAT TORE. The swath is as wide as the implement -- over
+     twelve metres for a big planter -- and it was emitted as a single flat
+     quad per step. Over real terrain that quad spans a couple of ground cells
+     across, so it passed underneath every ridge between them and the hillside
+     showed through the worked ground in ragged holes. Putting the corners on
+     the surface never addressed it, because the hole is in the middle of the
+     quad, not at its corners.
+
+     The swath is now a grid: divided across its width and along its length so
+     that no piece is bigger than about half a ground cell. On flat ground
+     nothing subdivides and the cost is what it always was. */
   function buildSwath(mb, s, upTo, tilt, a, b, halfWidth, plan) {
-    var step = Math.max(1, Math.floor(upTo / (plan ? 460 : 220)));
+    var step = Math.max(1, Math.floor(upTo / (plan ? 320 : 220)));
     var from = plan ? 0 : Math.max(0, upTo - 2200);
+    var limit = maxSegment();
+    var strips = Math.max(1, Math.min(10, Math.ceil((halfWidth * 2) / limit)));
+
     for (var i = from; i < upTo - step; i += step) {
       var p = edgePair(s, i, a, b, halfWidth), q = edgePair(s, i + step, a, b, halfWidth);
       if (!p || !q) { continue; }
-      mb.quad(place([p.lx, p.ly, 0.03], [0, 0], 0, tilt),
-              place([q.lx, q.ly, 0.03], [0, 0], 0, tilt),
-              place([q.rx, q.ry, 0.03], [0, 0], 0, tilt),
-              place([p.rx, p.ry, 0.03], [0, 0], 0, tilt), COL.worked);
+
+      var travel = Math.hypot((q.lx + q.rx) / 2 - (p.lx + p.rx) / 2,
+                              (q.ly + q.ry) / 2 - (p.ly + p.ry) / 2);
+      var runs = Math.max(1, Math.min(6, Math.ceil(travel / limit)));
+
+      for (var r = 0; r < runs; r++) {
+        var f0 = r / runs, f1 = (r + 1) / runs;
+        for (var c = 0; c < strips; c++) {
+          var u0 = c / strips, u1 = (c + 1) / strips;
+          mb.quad(place(swathPoint(p, q, f0, u0), [0, 0], 0, tilt),
+                  place(swathPoint(p, q, f1, u0), [0, 0], 0, tilt),
+                  place(swathPoint(p, q, f1, u1), [0, 0], 0, tilt),
+                  place(swathPoint(p, q, f0, u1), [0, 0], 0, tilt), COL.worked);
+        }
+      }
     }
+  }
+
+  /* A point on the worked strip: f along the two edge pairs, u across from the
+     left edge to the right. */
+  function swathPoint(p, q, f, u) {
+    var lx = p.lx + (q.lx - p.lx) * f, ly = p.ly + (q.ly - p.ly) * f;
+    var rx = p.rx + (q.rx - p.rx) * f, ry = p.ry + (q.ry - p.ry) * f;
+    return [lx + (rx - lx) * u, ly + (ry - ly) * u, 0.03];
   }
 
   /* Planar shadow: every machine vertex dropped onto the ground along the
@@ -1056,11 +1181,19 @@
       // Settled before anything asks how high the ground is, because every
       // such answer is defined relative to this mesh.
       MESH = meshFor(pose.x, plan, 0);
+      BODY_PLANE = null;
 
-      // The machine is rigid: it sits at one height rather than draping over
-      // the ground the way the swath does.
+      // The outfit stands on a plane fitted to the ground under its own
+      // wheels, so the front tyres touch down as well as the rear and the
+      // implement is carried rather than buried. Fitted before the plane is
+      // installed, or every sample would read back the plane itself.
       var machineH = groundHeight(pose.x, pose.y);
-      HEIGHT_LOCK = machineH;
+      if (HEIGHT_AT) {
+        BODY_PLANE = fitGroundPlane(outfitFootprint(pose, g, im));
+        machineH = groundHeight(pose.x, pose.y);
+      } else {
+        HEIGHT_LOCK = machineH;
+      }
 
       var machine = new Builder();
       buildTractor(machine, g, pose, tilt);
@@ -1092,6 +1225,7 @@
       scene.frame(span);
 
       HEIGHT_LOCK = null;
+      BODY_PLANE = null;
 
       var groundMb = new Builder();
       buildGround(groundMb, MESH, tilt, terrain);
@@ -1119,8 +1253,11 @@
       var offset = Math.max(FIGURE_OFFSET_M, span * 0.5 + 4);
       figures.forEach(function (f) {
         // Each figure stands upright on the ground where it is, rather than
-        // leaning with the slope under it.
-        HEIGHT_LOCK = groundHeight(f[0], -offset);
+        // leaning with the slope under it. Sampled at +offset because that is
+        // where the figure is drawn: reading the height from -offset put it on
+        // ground eighty metres away across the field, and on a hillside that
+        // buried it up to the shoulders.
+        HEIGHT_LOCK = groundHeight(f[0], offset);
         buildScaleFigure(machine, f[0], offset, tilt);
         HEIGHT_LOCK = null;
       });
