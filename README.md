@@ -25,7 +25,7 @@ is. Nearly all published path-tracking work optimises tractor error.
 git clone https://github.com/FernLag/Implement-Aware-Guidance-Simulator.git
 cd Implement-Aware-Guidance-Simulator
 python3 -m pip install -r requirements.txt
-python3 -m pytest tests/ -q          # 321 tests, ~95 s
+python3 -m pytest tests/ -q          # 355 tests, ~95 s
 ```
 
 Requires Python 3.11+. Dependencies are NumPy, Matplotlib, PyYAML and pytest.
@@ -360,13 +360,14 @@ aggsim/
     steering.py   actuator lag and slew limit (Stage 2)
     terrain.py    side slope and slip (Stage 3)
   sim/run.py      fixed-step loop
+  ros2/           URDF generation and node wrappers (Stage 7 groundwork)
   analysis/
     oscillation.py  settling and damping detection (Stage 2)
     coverage.py     skip and overlap between passes (Stage 6)
     tuning.py       dual-objective gain search (Stage 6)
 scripts/          one demo script per stage, plus asset and audit tools
 web/              browser interface (Flask), separate from the simulation core
-tests/            321 tests
+tests/            355 tests
 ```
 
 ### Conventions
@@ -394,7 +395,7 @@ tests/            321 tests
 | 4 · Implement model, second metric | done |
 | 5 · Stanley comparison | done |
 | 6 · Dual-objective tuning | done, 24 configurations |
-| 7 · ROS 2 / Gazebo validation | conditional on 0–6 |
+| 7 · ROS 2 / Gazebo validation | groundwork done, environment not attempted |
 
 Stage 6 is complete and the divergence is real, but three caveats bound it.
 **144 gain settings were excluded** because the hitch reached its stop there;
@@ -408,9 +409,30 @@ the shortest lookahead searched, so neither has an interior optimum and the
 comparison is vacuous. `TuningResult.interior` flags that case rather than
 letting it read as agreement.
 
-Stage 7 (ROS 2 / Gazebo) remains conditional. Per the brief, it should not
-begin until Stages 1–6 are validated, and should be abandoned in favour of
-shipping Stages 0–6 if the environment takes more than about two weeks.
+**Stage 7** is split deliberately. The half that needs no ROS 2 and no Gazebo
+is done and tested: a URDF generated from the catalog, and node wrappers around
+the controllers.
+
+```bash
+python3 scripts/stage7_description.py     # writes results/urdf/
+```
+
+The description uses the real wheelbase and the wheel diameters derived from
+the catalogued tyre codes, puts `base_link` at the rear axle so both
+simulations agree where the machine is, and gives the hitch a revolute joint
+whose limit is **the same 85 degree stop the kinematic model enforces**, so the
+two agree about what is impossible. The provenance travels with the file: a
+URDF pulled out of this repository still says which of its numbers are sourced
+and which are assumed.
+
+`ControllerBridge` turns a pose and a speed into a steering command using the
+identical `pure_pursuit` and `stanley` functions Stages 1 to 6 call, and a test
+asserts the outputs are equal, not merely similar. `rclpy` is imported lazily,
+so the module works on a machine with no ROS and explains why it cannot run.
+
+The Gazebo half is **not** attempted. Per the brief it should be abandoned
+rather than allowed to consume weeks, and a finished kinematic study is worth
+more than a half-configured Gazebo world. Nothing above depends on it.
 
 ---
 

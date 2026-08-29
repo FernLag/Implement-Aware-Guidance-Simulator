@@ -20,69 +20,23 @@ so a drawn wheel is the size the machine actually rolls on, not a guess.
 
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass
+from aggsim.catalog.tyres import parse_tyre, wheel_dimensions
 
 from .appearance import livery_for, profile_for
 
-INCH = 0.0254
-
-# Imperial tyre codes give a section width but no aspect ratio. Pre-metric
-# agricultural sizes run near 0.82. This is the one number here that is
-# assumed rather than read from the code.
-IMPERIAL_ASPECT = 0.82
-
-_METRIC = re.compile(r"^(\d{2,3})/(\d{2,3})R(\d{2})$")
-_IMPERIAL = re.compile(r"^(\d{1,2}(?:\.\d{1,2})?)[R-](\d{2})$")
-
-
-@dataclass(frozen=True)
-class Tyre:
-    diameter: float  # m
-    width: float  # m
-    derived_from: str
-    assumed_aspect: bool
-
-
-def parse_tyre(code: str | None) -> Tyre | None:
-    """Overall diameter and section width from a tyre size code."""
-    if not code:
-        return None
-    text = code.strip().replace(" ", "")
-
-    m = _METRIC.match(text)
-    if m:
-        section_mm, aspect_pct, rim_in = int(m[1]), int(m[2]), int(m[3])
-        width = section_mm / 1000.0
-        diameter = rim_in * INCH + 2.0 * width * (aspect_pct / 100.0)
-        return Tyre(diameter, width, text, assumed_aspect=False)
-
-    m = _IMPERIAL.match(text)
-    if m:
-        section_in, rim_in = float(m[1]), int(m[2])
-        width = section_in * INCH
-        diameter = rim_in * INCH + 2.0 * width * IMPERIAL_ASPECT
-        return Tyre(diameter, width, text, assumed_aspect=True)
-
-    return None
+# Tyre parsing and wheel dimensions live in aggsim.catalog.tyres, because the
+# 3D view and the Stage 7 robot description must agree about the machine, and
+# both are derived from catalogued tyre codes rather than invented here.
 
 
 def machine_geometry(tractor, implement, geometry) -> dict:
     """Everything the renderer needs, with each value marked sourced or not."""
     wheelbase = tractor.wheelbase.value
-    front = parse_tyre(tractor.tire_front)
-    rear = parse_tyre(tractor.tire_rear)
-
-    # Fall back on proportions of the wheelbase where a tyre code is missing.
-    front_d = front.diameter if front else wheelbase * 0.55
-    rear_d = rear.diameter if rear else wheelbase * 0.68
-    front_w = front.width if front else 0.42
-    rear_w = rear.width if rear else 0.58
-
-    # Track width is not published by any manufacturer in this catalog. Row
-    # crop tractors are commonly set near a 60 inch row spacing, and the value
-    # only affects how wide the machine looks.
-    track = max(1.52, rear_d * 1.05)
+    dims = wheel_dimensions(tractor)
+    front_d = dims["front_radius"] * 2.0
+    rear_d = dims["rear_radius"] * 2.0
+    front_w, rear_w = dims["front_width"], dims["rear_width"]
+    track = dims["track_width"]
 
     profile_name, profile = profile_for(tractor)
 
@@ -95,15 +49,13 @@ def machine_geometry(tractor, implement, geometry) -> dict:
         "track_width": {"value": round(track, 3), "sourced": False},
         "front_wheel": {
             "diameter": round(front_d, 3), "width": round(front_w, 3),
-            "sourced": front is not None,
-            "code": front.derived_from if front else None,
-            "assumed_aspect": front.assumed_aspect if front else True,
+            "sourced": dims["front_sourced"], "code": dims["front_code"],
+            "assumed_aspect": dims["front_assumed_aspect"],
         },
         "rear_wheel": {
             "diameter": round(rear_d, 3), "width": round(rear_w, 3),
-            "sourced": rear is not None,
-            "code": rear.derived_from if rear else None,
-            "assumed_aspect": rear.assumed_aspect if rear else True,
+            "sourced": dims["rear_sourced"], "code": dims["rear_code"],
+            "assumed_aspect": dims["rear_assumed_aspect"],
         },
         # Body size is drawing only. Proportional to the wheelbase so a compact
         # utility tractor does not come out the size of a row crop one.
