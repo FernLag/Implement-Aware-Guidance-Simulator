@@ -465,7 +465,7 @@ tests/            355 tests
 | 4 · Implement model, second metric | done |
 | 5 · Stanley comparison | done |
 | 6 · Dual-objective tuning | done, 24 configurations |
-| 7 · ROS 2 / Gazebo validation | groundwork done, environment not attempted |
+| 7 · ROS 2 / Gazebo validation | built and containerised; physics sweep not yet run |
 
 Stage 6 is complete and the divergence is real, but three caveats bound it.
 **144 gain settings were excluded** because the hitch reached its stop there;
@@ -479,13 +479,37 @@ the shortest lookahead searched, so neither has an interior optimum and the
 comparison is vacuous. `TuningResult.interior` flags that case rather than
 letting it read as agreement.
 
-**Stage 7** is split deliberately. The half that needs no ROS 2 and no Gazebo
-is done and tested: a URDF generated from the catalog, and node wrappers around
-the controllers.
+**Stage 7** is split deliberately, and the split is between what has been
+*built* and what has been *run*.
+
+Built and tested with no ROS 2 and no Gazebo present: the URDF generated from
+the catalog, node wrappers around the controllers, a Gazebo world with a
+configurable side slope, the physics extensions to the description, the
+divergence measure, and the comparison harness.
 
 ```bash
 python3 scripts/stage7_description.py     # writes results/urdf/
+python3 scripts/stage7_assets.py --slope-deg 8   # world.sdf + robot.urdf
+python3 scripts/stage7_compare.py --sweep        # the comparison
 ```
+
+**The physics sweep has not been run, so there is no validity envelope yet.**
+`stage7_compare.py` reports which cases are missing and stops rather than
+producing one. A validity envelope computed from a physics run that never
+happened would look exactly like a real one, which is what would make it the
+most damaging thing this project could publish. Running it needs the container:
+
+```bash
+docker build -t aggsim-stage7 -f docker/stage7/Dockerfile .
+docker run --rm -v "$PWD/build:/work/build" \
+  -e NAME=flat_3ms -e SLOPE=0 -e SPEED=3 aggsim-stage7
+```
+
+The world tilts the floor and lets gravity act, where the kinematic model
+replaces the slope with an assumed lateral drift coefficient. That makes the
+slope cases the one measurement in this project that could give that assumed
+coefficient a value, which is a different claim from validating the model and
+is reported separately.
 
 The description uses the real wheelbase and the wheel diameters derived from
 the catalogued tyre codes, puts `base_link` at the rear axle so both

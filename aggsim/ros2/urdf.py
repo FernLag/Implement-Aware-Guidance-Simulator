@@ -82,9 +82,91 @@ def _wheel_link(robot: ET.Element, name: str, radius: float, width: float,
             ET.SubElement(node, "material", name="tyre")
 
 
+# Contact stiffness and damping for a tyre on soil. Neither is published, and
+# neither is a property of any machine: they are what Gazebo needs to make a
+# contact behave like something other than a rock hitting glass.
+CONTACT_KP = 1.0e6
+CONTACT_KD = 1.0e3
+
+
+def _gazebo_friction(robot: ET.Element, link: str, mu: float, mu2: float) -> None:
+    """Coulomb friction on one wheel, which the kinematic model has none of."""
+    node = ET.SubElement(robot, "gazebo", reference=link)
+    ET.SubElement(node, "mu1").text = f"{mu}"
+    ET.SubElement(node, "mu2").text = f"{mu2}"
+    ET.SubElement(node, "kp").text = f"{CONTACT_KP}"
+    ET.SubElement(node, "kd").text = f"{CONTACT_KD}"
+
+
+def add_gazebo_extensions(robot: ET.Element, tractor: Tractor,
+                          wheels: list[str], has_implement_wheels: bool,
+                          mu: float = 0.75, mu2: float = 0.65,
+                          topic: str = "/cmd_vel") -> None:
+    """Everything Gazebo needs that a kinematic model has no use for.
+
+    The steering command still comes from the same controller: the node
+    publishes a Twist whose yaw rate is the bicycle model's, and the Ackermann
+    system turns that back into a steering angle using the same wheelbase. What
+    happens after that -- whether the tyre actually goes where it points -- is
+    the physics, and is the entire subject of Stage 7.
+    """
+    from ..catalog.tyres import wheel_dimensions
+
+    for link in wheels:
+        _gazebo_friction(robot, link, mu, mu2)
+
+    dims = wheel_dimensions(tractor)
+    track = dims["track_width"]
+    L = tractor.wheelbase.value
+
+    node = ET.SubElement(robot, "gazebo")
+    plugin = ET.SubElement(
+        node, "plugin",
+        filename="gz-sim-ackermann-steering-system",
+        name="gz::sim::systems::AckermannSteering")
+    for tag, value in (
+        ("left_joint", "rear_left_joint"),
+        ("right_joint", "rear_right_joint"),
+        ("left_steering_joint", "front_left_steer_joint"),
+        ("right_steering_joint", "front_right_steer_joint"),
+        ("wheel_separation", f"{track:.4f}"),
+        ("kingpin_width", f"{track * 0.88:.4f}"),
+        ("wheel_base", f"{L:.4f}"),
+        ("steering_limit", f"{tractor.max_steer_angle.value:.4f}"),
+        ("wheel_radius", f"{dims['rear_radius']:.4f}"),
+        ("topic", topic),
+        ("odom_topic", "/odom"),
+        ("frame_id", "world"),
+        ("child_frame_id", "base_link"),
+        ("odom_publish_frequency", "50"),
+    ):
+        ET.SubElement(plugin, tag).text = value
+
+    # Joint states, so the hitch angle can be compared against the kinematic
+    # model's fifth state rather than inferred from the pose.
+    states = ET.SubElement(robot, "gazebo")
+    ET.SubElement(states, "plugin",
+                  filename="gz-sim-joint-state-publisher-system",
+                  name="gz::sim::systems::JointStatePublisher")
+
+    if has_implement_wheels:
+        for link in ("implement_left", "implement_right"):
+            _gazebo_friction(robot, link, mu, mu2)
+
+
 def build_description(tractor: Tractor, implement: Implement | None = None,
-                      geometry=None) -> str:
-    """URDF for a tractor, optionally with an implement on the drawbar."""
+                      geometry=None, gazebo: bool = False,
+                      mu: float = 0.75, mu2: float = 0.65) -> str:
+    """URDF for a tractor, optionally with an implement on the drawbar.
+
+    With `gazebo` set, the description also carries what a physics simulation
+    needs and a kinematic model does not: Coulomb friction at each contact, a
+    steering system, and wheels under a trailed implement so that it is held
+    up by the ground rather than by the drawbar. Those additions do not change
+    a single dimension; they only say what happens where the machine touches
+    the earth, which is precisely what Stage 7 is measuring.
+    """
+    implement_wheels = False
     robot = ET.Element("robot", name=f"{tractor.id}"
                        + (f"__{implement.id}" if implement else ""))
 
@@ -215,12 +297,44 @@ def build_description(tractor: Tractor, implement: Implement | None = None,
         ET.SubElement(joint, "child", link="implement")
         ET.SubElement(joint, "origin", xyz=f"{offset:.4f} 0 0.6", rpy="0 0 0")
 
+        # Under physics a trailed implement has to be carried by something. In
+        # the kinematic model it is a rolling constraint at an abstract axle;
+        # here that axle needs wheels, or the frame hangs off the drawbar and
+        # ploughs the ground with its corner. The lateral grip of these wheels
+        # is what makes the hitch angle behave, so their friction is swept with
+        # everything else.
+        if gazebo and geometry.type == "trailed" and b > 0:
+            imp_r = max(0.45, rear_r * 0.62)
+            imp_w = max(0.25, rear_w * 0.7)
+            imp_mass = max(50.0, mass * 0.06)
+            for side, sign in (("implement_left", 1.0), ("implement_right", -1.0)):
+                _wheel_link(robot, side, imp_r, imp_w, imp_mass)
+                wj = ET.SubElement(robot, "joint", name=f"{side}_joint",
+                                   type="continuous")
+                ET.SubElement(wj, "parent", link="implement")
+                ET.SubElement(wj, "child", link=side)
+                ET.SubElement(wj, "origin",
+                              xyz=f"0 {sign * width * 0.22:.4f} {imp_r - 0.6:.4f}",
+                              rpy="0 0 0")
+                ET.SubElement(wj, "axis", xyz="0 1 0")
+            implement_wheels = True
+
+    if gazebo:
+        add_gazebo_extensions(
+            robot, tractor,
+            ["rear_left", "rear_right", "front_left", "front_right"],
+            implement_wheels, mu=mu, mu2=mu2,
+        )
+
     raw = ET.tostring(robot, encoding="unicode")
     return minidom.parseString(raw).toprettyxml(indent="  ")
 
 
-def write_description(path: Path, tractor: Tractor, implement=None, geometry=None) -> Path:
+def write_description(path: Path, tractor: Tractor, implement=None, geometry=None,
+                      gazebo: bool = False, mu: float = 0.75,
+                      mu2: float = 0.65) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(build_description(tractor, implement, geometry))
+    path.write_text(build_description(tractor, implement, geometry,
+                                      gazebo=gazebo, mu=mu, mu2=mu2))
     return path
