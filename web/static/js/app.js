@@ -207,8 +207,24 @@
     clearErrors();
     setBusy(true);
     statusBox.hidden = false;
-    statusBox.textContent = "Running the pass. This usually takes a moment.";
+    statusBox.textContent =
+      (parseInt(document.getElementById("passes").value, 10) || 1) > 1
+        ? "Working the field. Several passes take a little longer."
+        : "Running the pass. This usually takes a moment.";
     resultsBox.hidden = true;
+
+    // Caught here rather than by the server, because the answer is already on
+    // the page: passes are spaced by the implement's working width, and with
+    // no implement there is no spacing.
+    var passCount = parseInt(document.getElementById("passes").value, 10) || 1;
+    if (passCount > 1 && !implementSel.value) {
+      setBusy(false);
+      statusBox.hidden = true;
+      showFieldError("passes",
+        "Working more than one pass needs an implement: the spacing between " +
+        "passes is the implement's working width.");
+      return;
+    }
 
     var controller = form.querySelector('input[name="controller"]:checked').value;
     var useField = document.getElementById("use_field");
@@ -222,7 +238,10 @@
       initial_offset: parseFloat(document.getElementById("initial_offset").value),
       lookahead_gain: parseFloat(document.getElementById("lookahead_gain").value),
       stanley_gain: parseFloat(document.getElementById("stanley_gain").value),
-      actuator: document.getElementById("actuator").checked
+      actuator: document.getElementById("actuator").checked,
+      passes: parseInt(document.getElementById("passes").value, 10) || 1,
+      pass_length: parseFloat(document.getElementById("pass_length").value),
+      headland: parseFloat(document.getElementById("headland").value)
     };
     if (useField && useField.checked && fieldInfo && lastPlace) {
       payload.field = {
@@ -294,6 +313,7 @@
     }
 
     setupScene(data);
+    drawPasses(data);
     drawProfile(data.field);
     drawChart(s, lines);
     drawLegend(lines);
@@ -314,11 +334,80 @@
     if (m.final_worst_edge !== undefined) {
       summary += " The worst implement edge settles at " + fmt(m.final_worst_edge) +
         " metres, which is " + (Math.abs(m.final_worst_edge / (m.final_cross_track || 1))).toFixed(2) +
-        " times the tractor figure. Skip between adjacent passes averages " +
-        fmt(m.rms_skip_m * 100, 1) + " centimetres, " + fmt(m.rms_skip_percent, 2) +
-        " percent of the working width.";
+        " times the tractor figure.";
+      if (m.rms_skip_m !== undefined) {
+        summary += " Skip between adjacent passes averages " +
+          fmt(m.rms_skip_m * 100, 1) + " centimetres, " + fmt(m.rms_skip_percent, 2) +
+          " percent of the working width, " + (m.coverage_basis || "") + ".";
+      }
     }
     document.getElementById("chart-summary").textContent = summary;
+  }
+
+  /* What the field cost, pass by pass. Only meaningful once there is more
+     than one pass, because a neighbour is what skip and overlap are measured
+     against. */
+  function drawPasses(data) {
+    var card = document.getElementById("passes-card");
+    var p = data.passes;
+    if (!p) { card.hidden = true; return; }
+    card.hidden = false;
+
+    var body = document.getElementById("passes-body");
+    body.textContent = "";
+    p.detail.forEach(function (d) {
+      var tr = document.createElement("tr");
+      [String(d.index + 1),
+       d.forward ? "out" : "back",
+       fmt(d.entry_error),
+       fmt(d.settled_error),
+       d.rms_edge === undefined ? "\u2014" : fmt(d.rms_edge),
+       d.peak_edge === undefined ? "\u2014" : fmt(d.peak_edge),
+       fmt(d.turn_peak, 1)].forEach(function (text, i) {
+        var cell = document.createElement(i === 0 ? "th" : "td");
+        if (i === 0) { cell.scope = "row"; }
+        cell.textContent = text;
+        tr.appendChild(cell);
+      });
+      body.appendChild(tr);
+    });
+
+    var bBody = document.getElementById("boundaries-body");
+    bBody.textContent = "";
+    (data.summary.boundaries || []).forEach(function (b) {
+      var tr = document.createElement("tr");
+      [b.between[0] + 1 + " and " + (b.between[1] + 1),
+       b.mean_skip_cm.toFixed(1),
+       b.worst_gap_cm.toFixed(1),
+       b.worst_overlap_cm.toFixed(1),
+       b.gap_area_m2_per_100m.toFixed(2)].forEach(function (text, i) {
+        var cell = document.createElement(i === 0 ? "th" : "td");
+        if (i === 0) { cell.scope = "row"; }
+        cell.textContent = text;
+        tr.appendChild(cell);
+      });
+      bBody.appendChild(tr);
+    });
+
+    var plan = p.plan;
+    var text = "Worked " + p.worked + " of " + plan.passes + " passes, " +
+      plan.length + " metres long and " + plan.working_width.toFixed(2) +
+      " metres apart, covering " + plan.worked_area_ha.toFixed(2) + " hectares.";
+    if (!p.complete) {
+      text += " The run reached its time limit before the field was finished, " +
+        "so the last passes are missing.";
+    }
+    var settled = p.detail.map(function (d) { return d.settled_error; });
+    var flips = settled.filter(function (v, i) {
+      return i > 0 && v * settled[i - 1] < 0;
+    }).length;
+    if (flips === settled.length - 1 && settled.length > 1 &&
+        Math.abs(settled[0]) > 0.02) {
+      text += " The settled offset changes sign on every pass: the hillside has " +
+        "not moved, but the machine has turned round, so the drift that pushed " +
+        "it one way going out pushes it the other way coming back.";
+    }
+    document.getElementById("passes-summary").textContent = text;
   }
 
   /* The ground itself, drawn against distance rather than time, because that
@@ -523,7 +612,8 @@
     if (!params.toString()) { return false; }
     [["speed", "speed"], ["slope_deg", "slope_deg"], ["slip", "slip"],
      ["initial_offset", "initial_offset"], ["lookahead_gain", "lookahead_gain"],
-     ["stanley_gain", "stanley_gain"]].forEach(function (pair) {
+     ["stanley_gain", "stanley_gain"], ["passes", "passes"],
+     ["pass_length", "pass_length"], ["headland", "headland"]].forEach(function (pair) {
       var v = params.get(pair[0]);
       var el = document.getElementById(pair[1]);
       if (v !== null && el) { el.value = v; }

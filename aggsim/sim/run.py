@@ -20,11 +20,16 @@ from typing import Callable
 
 import numpy as np
 
+import dataclasses
+
 from ..config.steering import SteeringParams
 from ..config.terrain import Terrain
+from ..geometry.field import FieldPlan
 from ..geometry.abline import ABLine, wrap_angle
 from ..model.state import State
-from ..model.implement import ImplementGeometry, edge_errors, implement_position
+from ..model.implement import (
+    ImplementGeometry, edge_errors, edge_positions, implement_position,
+)
 from ..model.vehicle import VehicleParams, rk4_step_plant
 
 
@@ -62,6 +67,26 @@ class SimLog:
     # run is reported as invalid rather than presented as a result.
     jackknifed: bool = False
     jackknife_time: float | None = None
+    # Which pass the machine was on at each step. None for a single line.
+    pass_index: np.ndarray | None = None
+    # World positions of the working edges. Errors are measured against the
+    # line being followed, which is the right frame for tracking but the wrong
+    # one for comparing two passes driven in opposite directions.
+    edge_left_xy: np.ndarray | None = None
+    edge_right_xy: np.ndarray | None = None
+
+    def pass_slice(self, index: int) -> slice:
+        """The samples belonging to one pass, for comparing it with a neighbour."""
+        if self.pass_index is None:
+            raise ValueError("run had no field plan")
+        hits = np.flatnonzero(self.pass_index == index)
+        if not hits.size:
+            raise ValueError(f"no samples on pass {index}")
+        return slice(int(hits[0]), int(hits[-1]) + 1)
+
+    @property
+    def passes_worked(self) -> int:
+        return 1 if self.pass_index is None else int(self.pass_index.max()) + 1
 
     @property
     def worst_edge(self) -> np.ndarray:
@@ -98,8 +123,32 @@ def simulate(
     initial_delta: float = 0.0,
     terrain: Terrain | None = None,
     geometry: ImplementGeometry | None = None,
+    plan: FieldPlan | None = None,
+    make_controller=None,
 ) -> SimLog:
-    """Integrate the vehicle under a controller, logging error each step."""
+    """Integrate the vehicle under a controller, logging error each step.
+
+    With a `plan`, the machine works a field: it tracks one line until it has
+    driven past the end, then switches to the next, which runs the other way.
+    `make_controller` is called with each new line, because a controller is
+    bound to the line it follows and there is no way to retarget one without
+    rebuilding it.
+
+    Cross-track error is always measured against the line currently being
+    followed, in that line's own frame, so a return pass reports its error the
+    way its own driver would see it.
+
+    ON A RETURN PASS THE SLOPE CHANGES SIDES. Drift is defined perpendicular to
+    heading, which is what the model has always done and what its closed form
+    was validated against. On a hillside that is only half the story: the
+    ground falls the same way in the world whichever direction you drive, so a
+    machine coming back has the slope on its other side. The sign is therefore
+    flipped for return passes, which keeps the formulation and gets the physics
+    right where it previously could not be told apart.
+    """
+    if plan is not None and make_controller is None:
+        raise ValueError("a field plan needs make_controller to rebuild the "
+                         "controller for each line")
     n = config.n_steps
     jackknifed = False
     jackknife_time = None
@@ -110,10 +159,13 @@ def simulate(
     deltas = np.zeros(n + 1)
     cmds = np.zeros(n + 1)
     errors = np.zeros(n + 1)
+    passes = np.zeros(n + 1, dtype=int)
     theta_i = np.zeros(n + 1)
     imp_err = np.zeros(n + 1)
     edge_l = np.zeros(n + 1)
     edge_r = np.zeros(n + 1)
+    edge_lxy = np.zeros((n + 1, 2))
+    edge_rxy = np.zeros((n + 1, 2))
 
     # (x, y, theta, delta, theta_i). The implement starts aligned with the
     # tractor, which is the steady state on flat ground with zero steering.
@@ -125,8 +177,36 @@ def simulate(
     tau = steering.tau.value if steering else None
     rate_limit = steering.rate_limit.value if steering else None
 
+    pass_index = 0
+    active_line = line
+    active_terrain = terrain
+    if plan is not None:
+        active_line = plan.line(0)
+        controller = make_controller(active_line)
+
+    worked = n  # last sample that is real field work
     for i in range(n + 1):
         state = State.from_array(vec[:3])
+
+        # The last pass has nothing to turn onto, so without this the machine
+        # keeps driving down an infinite line long after the field ends. Stop
+        # at the far headland and treat `duration` as an upper bound.
+        if (plan is not None and pass_index >= plan.passes - 1
+                and plan.beyond_end(pass_index, state.x)):
+            worked = i - 1
+            break
+
+        if plan is not None and plan.finished(pass_index, state.x):
+            pass_index += 1
+            active_line = plan.line(pass_index)
+            controller = make_controller(active_line)
+            if terrain is not None and terrain.slope_enabled:
+                # The hillside has not moved; the machine has turned round.
+                active_terrain = dataclasses.replace(
+                    terrain, slope_sign=terrain.slope_sign * (-1.0)
+                    if not plan.forward(pass_index) else abs(terrain.slope_sign)
+                )
+
         delta_cmd = controller(state)
 
         # With an ideal actuator the wheels are always at the commanded angle.
@@ -139,20 +219,24 @@ def simulate(
         thetas[i] = state.theta
         deltas[i] = vec[3]
         cmds[i] = delta_cmd
-        errors[i] = line.cross_track(state.x, state.y)
+        errors[i] = active_line.cross_track(state.x, state.y)
+        passes[i] = pass_index
 
         if geometry is not None:
             theta_i[i] = vec[4]
             centre = implement_position(state.x, state.y, state.theta, vec[4], geometry)
-            imp_err[i] = line.cross_track(centre[0], centre[1])
+            imp_err[i] = active_line.cross_track(centre[0], centre[1])
             edge_l[i], edge_r[i] = edge_errors(
-                line, state.x, state.y, state.theta, vec[4], geometry
+                active_line, state.x, state.y, state.theta, vec[4], geometry
             )
+            left, right = edge_positions(state.x, state.y, state.theta, vec[4], geometry)
+            edge_lxy[i] = left
+            edge_rxy[i] = right
 
         if i < n:
             vec = rk4_step_plant(
                 vec, config.speed, delta_cmd, params.wheelbase,
-                tau, rate_limit, config.dt, terrain, geometry,
+                tau, rate_limit, config.dt, active_terrain, geometry,
             )
             if steering is not None:
                 vec[3] = float(
@@ -170,6 +254,15 @@ def simulate(
                         jackknifed = True
                         jackknife_time = (i + 1) * config.dt
 
+    if worked < n:
+        keep = slice(0, worked + 1)
+        t, xs, ys, thetas = t[keep], xs[keep], ys[keep], thetas[keep]
+        deltas, cmds, errors, passes = (
+            deltas[keep], cmds[keep], errors[keep], passes[keep])
+        theta_i, imp_err = theta_i[keep], imp_err[keep]
+        edge_l, edge_r = edge_l[keep], edge_r[keep]
+        edge_lxy, edge_rxy = edge_lxy[keep], edge_rxy[keep]
+
     return SimLog(
         t=t, x=xs, y=ys, theta=thetas,
         delta=deltas, delta_cmd=cmds, cross_track=errors,
@@ -179,4 +272,7 @@ def simulate(
         edge_right=edge_r if geometry is not None else None,
         jackknifed=jackknifed,
         jackknife_time=jackknife_time,
+        pass_index=passes if plan is not None else None,
+        edge_left_xy=edge_lxy if geometry is not None else None,
+        edge_right_xy=edge_rxy if geometry is not None else None,
     )

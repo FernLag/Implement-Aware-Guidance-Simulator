@@ -98,6 +98,37 @@
         </div>
 
         <div class="field-group">
+          <h3>Field work</h3>
+          <p class="hint">One pass measures how well the machine holds a line.
+          Working several measures what that costs the crop: passes are spaced
+          one working width apart, the machine turns on the headland between
+          them, and every pass is compared with the neighbour that was actually
+          driven rather than with a copy of itself.</p>
+          <p class="field">
+            <label for="passes">Passes <span class="unit">1 works a single endless line</span></label>
+            <input type="number" id="passes" name="passes" value="1" min="1" max="10" step="1"
+                   aria-describedby="passes-error passes-note">
+            <span class="hint" id="passes-note">Needs an implement: the spacing
+            between passes is the implement's working width.</span>
+            <span class="error" id="passes-error" role="alert"></span>
+          </p>
+          <p class="field">
+            <label for="pass_length">Pass length <span class="unit">metres</span></label>
+            <input type="number" id="pass_length" name="pass_length" value="200" min="40" max="800" step="10"
+                   aria-describedby="pass_length-error">
+            <span class="error" id="pass_length-error" role="alert"></span>
+          </p>
+          <p class="field">
+            <label for="headland">Headland <span class="unit">metres for the turn</span></label>
+            <input type="number" id="headland" name="headland" value="12" min="4" max="40" step="1"
+                   aria-describedby="headland-error">
+            <span class="error" id="headland-error" role="alert"></span>
+          </p>
+          <p class="hint">Run time is worked out from the field, so the duration
+          setting does not apply when more than one pass is selected.</p>
+        </div>
+
+        <div class="field-group">
           <h3>Real field</h3>
           <p class="hint">The ground under the machine is plain soil until you
           load a field here. Reading a field fetches USGS elevation and puts the
@@ -246,6 +277,49 @@
             <div class="chart-holder" id="chart" role="img" aria-labelledby="chart-caption" aria-describedby="chart-summary"></div>
             <p class="chart-summary" id="chart-summary"></p>
             <ul class="legend" id="legend"></ul>
+          </figure>
+
+          <figure class="chart-card" id="passes-card" hidden>
+            <figcaption id="passes-caption">Pass by pass</figcaption>
+            <p class="chart-summary" id="passes-summary"></p>
+            <div class="table-scroll">
+              <table id="passes-table">
+                <caption id="passes-table-caption">Each pass scored against the
+                line it was following, over the crop only. The headland turn is
+                reported separately: the machine is a working width off a line
+                it has not started yet, and counting that as tracking error
+                describes the turn rather than the work.</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Pass</th>
+                    <th scope="col">Direction</th>
+                    <th scope="col">Entered at (m)</th>
+                    <th scope="col">Settled at (m)</th>
+                    <th scope="col">RMS edge (m)</th>
+                    <th scope="col">Peak edge (m)</th>
+                    <th scope="col">Turn peak (m)</th>
+                  </tr>
+                </thead>
+                <tbody id="passes-body"></tbody>
+              </table>
+            </div>
+            <div class="table-scroll">
+              <table id="boundaries-table">
+                <caption id="boundaries-caption">Ground between neighbouring
+                passes, measured between the two passes actually driven rather
+                than against a copy of one of them. Positive is uncovered.</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Between</th>
+                    <th scope="col">Mean skip (cm)</th>
+                    <th scope="col">Worst gap (cm)</th>
+                    <th scope="col">Worst overlap (cm)</th>
+                    <th scope="col">Lost (m² per 100 m)</th>
+                  </tr>
+                </thead>
+                <tbody id="boundaries-body"></tbody>
+              </table>
+            </div>
           </figure>
 
           <div class="metrics" id="metrics"></div>

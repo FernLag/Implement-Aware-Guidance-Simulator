@@ -52,7 +52,7 @@ console.log(
 );
 
 for (const [id, data] of Object.entries(scenes)) {
-  if (id === "__none__") { continue; }
+  if (id === "__none__" || id === "__field__") { continue; }
   let parts;
   try {
     parts = capture(data, 100);
@@ -94,6 +94,49 @@ for (const [id, data] of Object.entries(scenes)) {
     (hi - lo).toFixed(1).padStart(12) + minX.toFixed(1).padStart(14) +
     "  " + (type === "mounted" ? "mounted" : "trailed")
   );
+}
+
+/* Multi-pass field work. The ground geometry here is what makes the turns and
+ * the neighbouring pass legible, and none of it exists on a single line. */
+const field = scenes.__field__;
+if (field) {
+  const plan = field.scene.plan;
+  check("field carries a plan", !!plan, "scene.plan missing");
+
+  const early = capture(field, 60);
+  const late = capture(field, field.series.x.length - 1);
+
+  let bad = 0;
+  for (const part of [late.machine, late.swath, late.ground]) {
+    for (let i = 0; i < part.length; i++) {
+      if (!isFinite(part[i])) { bad++; }
+    }
+  }
+  check("field finite", bad === 0, `${bad} non-finite components`);
+
+  // The worked ground accumulates instead of scrolling out of the window, so
+  // by the last frame there is more of it than at the start.
+  check("swath keeps its history",
+        late.swath.length > early.swath.length,
+        `swath went from ${early.swath.length} to ${late.swath.length} floats`);
+
+  // Every pass line must be drawn, spanning the width of the field.
+  let lo = 1e9, hi = -1e9;
+  for (let i = 0; i < late.swath.length; i += 9) {
+    if (late.swath[i + 1] < lo) { lo = late.swath[i + 1]; }
+    if (late.swath[i + 1] > hi) { hi = late.swath[i + 1]; }
+  }
+  const width = (plan.passes - 1) * plan.working_width;
+  check("pass lines span the field", hi - lo > width * 0.8,
+        `ground spans ${(hi - lo).toFixed(1)} m for a ${width.toFixed(1)} m field`);
+
+  console.log(
+    `\nfield: ${plan.passes} passes x ${plan.length} m, ` +
+    `ground spans ${(hi - lo).toFixed(1)} m, ` +
+    `${(late.swath.length / 27).toFixed(0)} ground triangles`
+  );
+  check("field ground budget", late.swath.length / 27 < 20000,
+        `${(late.swath.length / 27).toFixed(0)} ground triangles is too many`);
 }
 
 console.log();

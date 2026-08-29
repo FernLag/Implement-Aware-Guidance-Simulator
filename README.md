@@ -124,6 +124,18 @@ gains against three objectives. Writes `results/stage6_results.json` alongside
 the figure. Look for panel (b), the divergence is negative everywhere, which
 is the opposite sign to the hypothesis the project started from.
 
+### 8. A worked field  *(~40 s)*
+
+```bash
+python3 scripts/field_passes.py
+```
+
+Six parallel passes with headland turns between them, instead of one endless
+line. This is where skip and overlap stop being an assumption: every pass is
+compared with the neighbour that was actually driven, in the opposite
+direction, minutes apart, entering from its own turn. Look for panel (b), the
+settled offset changes sign on every pass.
+
 **Shortest meaningful demo:** run step 1, then step 5.
 
 ---
@@ -175,6 +187,22 @@ Three results that were not expected going in, each documented where it lives:
   the implement winding past 1800 degrees of hitch angle, which a drawbar
   cannot do. There is now a stop, and a run that reaches it is reported as
   invalid rather than presented as a result.
+- **On a side slope, the settled offset changes sign on every pass.** The
+  hillside has not moved; the machine has turned round. Working back and forth
+  therefore alternates the direction of the error, which no single-pass run can
+  show and which is why passes have to be compared with the neighbour actually
+  driven rather than with a copy of themselves.
+- **The headland turn dwarfs the work, and must be scored separately.** Every
+  pass after the first begins a full working width off a line it has not
+  started following. Included in a pass's statistics, that turn reports metres
+  of error where the work itself costs centimetres, describing the turn rather
+  than the work. Passes are scored over the crop; the turn is reported as its
+  own number.
+- **Nearly all the uncovered ground is at the ends of the field.** Between two
+  real neighbours the skip is a centimetre or two in the middle and 15 to 20 cm
+  in the first and last few metres, where each pass is still acquiring its line
+  out of the turn. The mean is close to zero and the worst case is not, and both
+  are true at once, so the summary reports area lost per 100 m alongside them.
 - **Skip and overlap do not follow either control objective.** A uniform
   lateral offset creates no skip at all, it shifts the whole field pattern
   without opening a gap. Skip is driven by implement *yaw*, so it falls
@@ -186,7 +214,8 @@ Three results that were not expected going in, each documented where it lives:
 
 ## Web interface
 
-A browser interface for running single passes without the command line.
+A browser interface for running passes without the command line, either one
+endless line or a field worked in parallel passes with headland turns.
 
 ```bash
 python3 -m pip install -r requirements-web.txt

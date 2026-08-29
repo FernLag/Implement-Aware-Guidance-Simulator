@@ -118,6 +118,8 @@
     // The same olive and clay the charts use, so a colour means one thing
     // everywhere in this interface.
     guide: [0.14, 0.11, 0.08],
+    guideIdle: [0.33, 0.30, 0.25],
+    headland: [0.30, 0.26, 0.19],
     trackTractor: [0.24, 0.33, 0.16],
     trackImplement: [0.55, 0.24, 0.09]
   };
@@ -501,10 +503,35 @@
     }
   }
 
-  function buildTracks(mb, s, upTo, tilt, im) {
-    var step = Math.max(1, Math.floor(upTo / 200));
+  /* The lines the operator asked for. With a field plan there is one per
+     pass, spaced a working width apart and bounded by the headlands, so the
+     turns and the offset the machine holds on each pass are both visible
+     against the line that pass was actually following. */
+  function buildPassLines(mb, tilt, plan, active) {
+    var len = plan.length, w = plan.working_width;
+    for (var i = 0; i < plan.passes; i += 1) {
+      var y = -i * w;
+      ribbon(mb, [[0, y], [len, y]], tilt, 0.09,
+             i === active ? COL.guide : COL.guideIdle,
+             i === active ? 0.055 : 0.035);
+    }
+    // Where the turns happen. Marking them keeps the swath that appears out
+    // there from reading as worked ground.
+    var edge = -(plan.passes - 1) * w - w * 0.6;
+    [[0, w * 0.6], [len, -0.0]].forEach(function (unused, k) {
+      var x = k === 0 ? 0 : len;
+      ribbon(mb, [[x, w * 0.6], [x, edge]], tilt, 0.06, COL.headland, 0.02);
+    });
+  }
+
+  function buildTracks(mb, s, upTo, tilt, im, plan) {
+    var step = Math.max(1, Math.floor(upTo / (plan ? 420 : 200)));
     var tractor = [], implement = [];
-    for (var i = Math.max(0, upTo - 2600); i <= upTo; i += step) {
+    // Over a field the whole worked pattern is the point, so the trail keeps
+    // its full history; on a single endless line only the recent stretch is
+    // ever on screen, and holding more of it is wasted geometry.
+    var from = plan ? 0 : Math.max(0, upTo - 2600);
+    for (var i = from; i <= upTo; i += step) {
       if (s.x[i] === null) { continue; }
       tractor.push([s.x[i], s.y[i]]);
       if (im && s.theta_implement) {
@@ -516,8 +543,11 @@
                         hy - reach * Math.sin(s.theta_implement[i])]);
       }
     }
-    // The line the operator asked for, straight down the field.
-    if (tractor.length) {
+    if (plan) {
+      buildPassLines(mb, tilt, plan,
+        s.pass_index ? s.pass_index[Math.min(upTo, s.pass_index.length - 1)] : 0);
+    } else if (tractor.length) {
+      // A single endless line, drawn to run off both ends of the view.
       var x0 = tractor[0][0], x1 = tractor[tractor.length - 1][0] + 90;
       ribbon(mb, [[x0 - 40, 0], [x1, 0]], tilt, 0.09, COL.guide, 0.055);
     }
@@ -527,9 +557,10 @@
     }
   }
 
-  function buildSwath(mb, s, upTo, tilt, a, b, halfWidth) {
-    var step = Math.max(1, Math.floor(upTo / 220));
-    for (var i = Math.max(0, upTo - 2200); i < upTo - step; i += step) {
+  function buildSwath(mb, s, upTo, tilt, a, b, halfWidth, plan) {
+    var step = Math.max(1, Math.floor(upTo / (plan ? 460 : 220)));
+    var from = plan ? 0 : Math.max(0, upTo - 2200);
+    for (var i = from; i < upTo - step; i += step) {
       var p = edgePair(s, i, a, b, halfWidth), q = edgePair(s, i + step, a, b, halfWidth);
       if (!p || !q) { continue; }
       mb.quad(place([p.lx, p.ly, 0.03], [0, 0], 0, tilt),
@@ -816,6 +847,7 @@
       var s = data.series, g = data.scene.machine;
       var tilt = (data.scene.slope_deg || 0) * Math.PI / 180 * (data.scene.slope_sign || 1);
       var im = g.implement;
+      var plan = data.scene.plan || null;
 
       var pose = {
         x: s.x[frame], y: s.y[frame], theta: s.theta[frame],
@@ -844,14 +876,22 @@
       var swathMb = new Builder();
       if (im) {
         buildSwath(swathMb, s, frame, tilt, im.hitch_distance.value,
-          im.implement_wheelbase.value, im.working_width.value / 2);
+          im.implement_wheelbase.value, im.working_width.value / 2, plan);
       }
-      buildTracks(swathMb, s, frame, tilt, im);
+      buildTracks(swathMb, s, frame, tilt, im, plan);
 
       var span = Math.max(g.wheelbase.value * 2.2,
         im ? im.working_width.value : 0,
         im ? (im.hitch_distance.value + im.implement_wheelbase.value +
               g.wheelbase.value * 1.6) : 0);
+      // A field is wider than a machine. Widen enough to hold the passes
+      // worked so far, so the turn and the neighbouring pass are both in view
+      // rather than the camera staying tight on the tractor.
+      if (plan) {
+        var worked = s.pass_index
+          ? s.pass_index[Math.min(frame, s.pass_index.length - 1)] : 0;
+        span = Math.max(span, (worked + 1.4) * plan.working_width);
+      }
       scene.frame(span);
 
       // Figures standing at fixed points along the headland, well clear of the

@@ -508,3 +508,72 @@ def test_the_hero_label_is_not_clipped(client):
     """It ran off the right edge of the diagram's viewBox."""
     html = client.get("/").get_data(as_text=True)
     assert 'text-anchor="end">the gap that matters' in html
+
+
+# --------------------------------------------------------------- field work
+
+def test_multi_pass_run_reports_every_pass(client):
+    response = client.post("/api/simulate", json={
+        "tractor": "jd_6145r", "implement": "jd_1775nt_16row30",
+        "passes": 3, "pass_length": 120.0, "speed": 3.0,
+        "slope_deg": 8.0, "slip": 0.1,
+    })
+    assert response.status_code == 200
+    body = response.get_json()
+
+    passes = body["passes"]
+    assert passes["worked"] == 3
+    assert passes["complete"] is True
+    assert len(passes["detail"]) == 3
+    assert len(body["summary"]["boundaries"]) == 2
+    assert len(body["series"]["pass_index"]) == len(body["series"]["x"])
+
+
+def test_multi_pass_needs_an_implement(client):
+    """The spacing between passes is the working width, so there is nothing to
+    space them by without one."""
+    response = client.post("/api/simulate", json={"tractor": "jd_6145r", "passes": 3})
+    assert response.status_code == 422
+    assert "implement" in response.get_json()["message"]
+
+
+def test_passes_are_bounded(client):
+    response = client.post("/api/simulate", json={
+        "tractor": "jd_6145r", "implement": "jd_1775nt_16row30", "passes": 99,
+    })
+    assert response.status_code == 422
+    assert response.get_json()["fields"][0]["field"] == "passes"
+
+
+def test_a_single_pass_says_its_coverage_is_an_assumption(client):
+    """One pass has no neighbour, so the skip figure compares it with a copy of
+    itself. The response has to say so rather than presenting it as measured."""
+    response = client.post("/api/simulate", json={
+        "tractor": "jd_6145r", "implement": "jd_1775nt_16row30",
+    })
+    body = response.get_json()
+    assert body["passes"] is None
+    assert body["summary"]["coverage_basis"] == "identical-passes assumption"
+
+
+def test_multi_pass_coverage_is_measured_not_assumed(client):
+    response = client.post("/api/simulate", json={
+        "tractor": "jd_6145r", "implement": "jd_1775nt_16row30", "passes": 3,
+    })
+    summary = response.get_json()["summary"]
+    assert summary["coverage_basis"] == "measured between passes actually driven"
+    # A whole working width apart would mean the wrong pair of edges.
+    assert abs(summary["rms_skip_m"]) < 0.5
+
+
+def test_passes_are_scored_over_the_crop_not_the_headland_turn(client):
+    """Every pass after the first starts a working width off a line it has not
+    begun. Scoring that as tracking error describes the turn, not the work."""
+    response = client.post("/api/simulate", json={
+        "tractor": "jd_6145r", "implement": "jd_1775nt_16row30",
+        "passes": 3, "pass_length": 120.0, "slope_deg": 8.0, "slip": 0.1,
+    })
+    detail = response.get_json()["passes"]["detail"]
+    for d in detail[1:]:
+        assert d["turn_peak"] > 5.0  # the turn really is metres wide
+        assert d["rms_edge"] < 2.0  # the work is not

@@ -28,6 +28,13 @@ def main() -> None:
     scenes["__none__"] = run_simulation(
         SimulationRequest(tractor="jd_6145r", duration=20.0), MAX_STEPS
     )
+    # A worked field, so the check covers the pass lines, the turns, and the
+    # swath history that only exist in multi-pass mode.
+    scenes["__field__"] = run_simulation(
+        SimulationRequest(tractor="jd_6145r", implement="jd_1775nt_16row30",
+                          passes=4, pass_length=120.0, slope_deg=6.0, slip=0.1),
+        MAX_STEPS,
+    )
     json.dump(scenes, sys.stdout)
 
 

@@ -51,6 +51,29 @@ theta' = (v / L) tan(delta)</pre>
     width, not against the guidance line. Measuring it against the line would
     report a perfectly placed wide implement as being half its own width out.</p>
 
+    <h2>Working a field</h2>
+    <p>A run can work parallel passes instead of one endless line. Passes are
+    spaced one working width apart and numbered from zero, so pass n sits at
+    lateral offset -n w, and alternate passes are driven the other way, which
+    is how a field is actually worked.</p>
+    <p>That last detail is not cosmetic. Cross-track error is signed relative to
+    the line's own left, so a return pass is scored in its own frame; and on a
+    side slope the drift that pushed the machine one way going out pushes it the
+    other way coming back. The settled offset therefore changes sign on every
+    pass. The hillside has not moved, the machine has turned round.</p>
+    <p>It also changes what skip and overlap mean. With a single pass they are
+    computed against a copy of that pass, which assumes the neighbour was worked
+    under identical conditions. With a field they are measured between the two
+    passes actually driven, resampled onto a shared along-field coordinate. The
+    boundary between pass n and pass n+1 sits at y = -(n + 1/2) w, and a forward
+    pass reaches it with its right edge while a return pass reaches it with its
+    left, so the two sides of one boundary do not follow the same rule.</p>
+    <p>Each pass is scored over the crop only. A pass's samples begin out on the
+    headland, where the machine is still coming round and is a full working width
+    off a line it has not started following; counting that stretch reports metres
+    of error where the work itself costs centimetres, and describes the turn
+    rather than the work. The turn is reported separately as its own number.</p>
+
     <h2>What the results are checked against</h2>
     <p>Where a closed form exists, the simulation is compared with it rather than
     with its own earlier output. On a side slope, pure pursuit settles at</p>
@@ -67,7 +90,15 @@ theta' = (v / L) tan(delta)</pre>
       the catalog but refused by the simulator.</li>
       <li>Implement draft forces and ground contact, beyond a single figure used
       to check whether a pairing is feasible at all.</li>
-      <li>Headland turns. Every run here is a straight AB line.</li>
+      <li>A planned headland turn. Passes are worked back and forth, and the
+      machine does come round between them, but no turn is designed: at the end
+      of a pass the guidance line is swapped for the next one and the same
+      steering law acquires it. There is no turn-path planner, no reverse or
+      K-turn for a machine that cannot come round in the width available, no
+      slowing down for the turn, and no lifting the implement out of work. The
+      turn is therefore a plausible path onto the next line rather than a model
+      of how an operator or a headland-management system would drive it, and the
+      error during it is reported separately for that reason.</li>
     </ul>
     <p><a href="{{ url_for('index') }}">Return to the simulator</a></p>
   </div>

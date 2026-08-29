@@ -46,6 +46,15 @@ class SimulationRequest(BaseModel):
 
     actuator: bool = True
 
+    # Field work rather than one endless line. With passes > 1 the machine
+    # works parallel passes spaced one working width apart, turning on the
+    # headland between them, which is where the implement error that matters
+    # for coverage actually comes from. `duration` is then computed from the
+    # work to be done and the value sent is ignored.
+    passes: int = Field(default=1, ge=1, le=10)
+    pass_length: float = Field(default=200.0, ge=40.0, le=800.0)
+    headland: float = Field(default=12.0, ge=4.0, le=40.0)
+
     # When given, the side slope comes from real elevation along this line and
     # `slope_deg` is ignored. The ground then changes under the machine as it
     # drives, which a single slope number cannot represent.

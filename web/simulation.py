@@ -15,7 +15,10 @@ import math
 
 import numpy as np
 
-from aggsim.analysis.coverage import coverage_between_passes
+from aggsim.analysis.coverage import (
+    coverage_across_passes,
+    coverage_between_passes,
+)
 from aggsim.catalog import check_pairing, load_catalog
 from aggsim.catalog.validate import required_draft_power
 from aggsim.catalog.param import Param
@@ -28,6 +31,7 @@ from aggsim.control import (
     make_stanley,
 )
 from aggsim.geometry import ABLine
+from aggsim.geometry.field import FieldPlan
 from aggsim.model import State, from_tractor, implement_from_catalog
 from aggsim.sim import SimConfig, simulate
 
@@ -37,6 +41,11 @@ from .terrain import TerrainError, slope_profile
 LINE = ABLine((0.0, 0.0), (1.0, 0.0))
 MAX_POINTS = 600
 BASE_DT = 0.01
+
+# Upper bound on a field run. The simulation stops itself at the far headland
+# of the last pass, so this only has to be generous enough not to truncate the
+# work; over-estimating costs nothing.
+MAX_FIELD_SECONDS = 1800.0
 
 
 class SimulationError(ValueError):
@@ -116,6 +125,47 @@ def _downsample(array: np.ndarray, step: int) -> list[float]:
     return [None if not math.isfinite(v) else round(float(v), 6) for v in thinned]
 
 
+def _pass_detail(log, plan, index: int) -> dict:
+    """What one pass cost, measured against the line that pass was following.
+
+    SCORED OVER THE CROP, NOT THE TURN. A pass's samples begin on the headland,
+    where the machine is still coming round and is a full working width off a
+    line it has only just been given. Including that stretch makes every pass
+    after the first report metres of error -- a statistic about the turn, not
+    about the work. Only the samples between the ends of the field are scored;
+    the turn is reported separately as the error the pass entered the crop
+    with, which is what the settling then has to remove.
+    """
+    sl = log.pass_slice(index)
+    x = log.x[sl]
+    err = log.cross_track[sl]
+    worked = (x >= 0.0) & (x <= plan.length)
+    if not np.any(worked):
+        worked = np.ones_like(x, dtype=bool)
+
+    crop = err[worked]
+    tail = max(1, len(crop) // 5)
+    detail = {
+        "index": index,
+        "forward": plan.forward(index),
+        "offset": round(plan.offset(index), 4),
+        "worked_m": round(float(np.ptp(x[worked])), 1),
+        "entry_error": round(float(crop[0]), 4),
+        "settled_error": round(float(np.mean(crop[-tail:])), 4),
+        "rms_cross_track": round(float(np.sqrt(np.mean(crop**2))), 4),
+        "peak_cross_track": round(float(np.max(np.abs(crop))), 4),
+        "turn_peak": round(float(np.max(np.abs(err))), 4),
+    }
+    if log.worst_edge is not None:
+        edge = log.worst_edge[sl][worked]
+        detail.update({
+            "entry_edge": round(float(edge[0]), 4),
+            "rms_edge": round(float(np.sqrt(np.mean(edge**2))), 4),
+            "peak_edge": round(float(np.max(np.abs(edge))), 4),
+        })
+    return detail
+
+
 def run_simulation(req, max_steps: int) -> dict:
     catalog = _catalog()
 
@@ -138,12 +188,34 @@ def run_simulation(req, max_steps: int) -> dict:
             raise SimulationError(f"Unknown implement '{req.implement}'.") from None
         geometry = implement_from_catalog(implement)
 
+    plan = None
+    duration = req.duration
+    if req.passes > 1:
+        if geometry is None:
+            raise SimulationError(
+                "Working parallel passes needs an implement: the spacing between "
+                "passes is the implement's working width."
+            )
+        plan = FieldPlan(
+            working_width=geometry.working_width,
+            passes=req.passes,
+            length=req.pass_length,
+            headland=req.headland,
+        )
+        # Enough time to finish the field, not the value the user sent. Each
+        # pass is its length plus both headlands, plus room for the turn onto
+        # the next one; the run stops itself when the work is done.
+        turn = 3.5 * geometry.working_width
+        distance = (req.passes * (plan.length + 2 * plan.headland)
+                    + (req.passes - 1) * turn)
+        duration = min(1.25 * distance / req.speed, MAX_FIELD_SECONDS)
+
     # Bound CPU by total integration steps, coarsening the timestep rather
     # than refusing the request outright.
     dt = BASE_DT
-    steps = int(req.duration / dt)
+    steps = int(duration / dt)
     if steps > max_steps:
-        dt = req.duration / max_steps
+        dt = duration / max_steps
         steps = max_steps
 
     profile = None
@@ -151,7 +223,7 @@ def run_simulation(req, max_steps: int) -> dict:
     if req.field is not None:
         # Sample far enough to cover the whole run, so the machine never drives
         # off the end of the measured ground.
-        travel = req.speed * req.duration
+        travel = req.speed * duration
         try:
             sampled = slope_profile(req.field.lat, req.field.lon,
                                     req.field.heading_deg, travel)
@@ -177,22 +249,31 @@ def run_simulation(req, max_steps: int) -> dict:
         ),
     )
 
-    if req.controller == "pure_pursuit":
-        controller = make_pure_pursuit(
-            LINE, req.speed,
-            PurePursuitGains(k=req.lookahead_gain, l_min=req.lookahead_min),
-            params,
-        )
-    else:
-        controller = make_stanley(
-            LINE, req.speed, StanleyGains(k_e=req.stanley_gain), params
+    def make_controller(line):
+        if req.controller == "pure_pursuit":
+            return make_pure_pursuit(
+                line, req.speed,
+                PurePursuitGains(k=req.lookahead_gain, l_min=req.lookahead_min),
+                params,
+            )
+        return make_stanley(
+            line, req.speed, StanleyGains(k_e=req.stanley_gain), params
         )
 
-    config = SimConfig(speed=req.speed, dt=dt, duration=req.duration)
+    if plan is None:
+        first_line = LINE
+        start = State(0.0, req.initial_offset, 0.0)
+    else:
+        first_line = plan.line(0)
+        x0, y0, h0 = plan.entry(0)
+        start = State(x0, y0 + req.initial_offset, h0)
+
+    config = SimConfig(speed=req.speed, dt=dt, duration=duration)
     log = simulate(
-        State(0.0, req.initial_offset, 0.0), LINE, controller, params, config,
+        start, first_line, make_controller(first_line), params, config,
         steering=load_steering() if req.actuator else None,
         terrain=terrain, geometry=geometry,
+        plan=plan, make_controller=make_controller if plan is not None else None,
     )
 
     step = max(1, len(log.t) // MAX_POINTS)
@@ -222,16 +303,58 @@ def run_simulation(req, max_steps: int) -> dict:
         series["implement_cross_track"] = _downsample(log.implement_cross_track, step)
         series["worst_edge"] = _downsample(log.worst_edge, step)
         series["theta_implement"] = _downsample(log.theta_implement, step)
-        coverage = coverage_between_passes(log, log, geometry.working_width)
         summary.update({
             "final_worst_edge": round(float(log.worst_edge[-1]), 5),
             "rms_worst_edge": round(log.rms_worst_edge(), 5),
             "peak_worst_edge": round(float(np.max(np.abs(log.worst_edge))), 5),
-            "rms_skip_m": round(coverage.rms_skip, 5),
-            "rms_skip_percent": round(coverage.rms_skip_percent, 4),
-            "worst_skip_m": round(coverage.worst_skip, 5),
             "working_width": geometry.working_width,
         })
+
+        if plan is None:
+            # One pass compared with a copy of itself: what happens when the
+            # neighbour is worked under identical conditions.
+            coverage = coverage_between_passes(log, log, geometry.working_width)
+            summary.update({
+                "rms_skip_m": round(coverage.rms_skip, 5),
+                "rms_skip_percent": round(coverage.rms_skip_percent, 4),
+                "worst_skip_m": round(coverage.worst_skip, 5),
+                "coverage_basis": "identical-passes assumption",
+            })
+        else:
+            # Neighbours that were actually driven, in opposite directions,
+            # each entering from its own headland turn. No assumption needed.
+            boundaries = [coverage_across_passes(log, plan, i).summary()
+                          for i in range(log.passes_worked - 1)]
+            if boundaries:
+                rms = float(np.sqrt(np.mean(
+                    [b["rms_skip_cm"] ** 2 for b in boundaries]))) / 100.0
+                summary.update({
+                    "rms_skip_m": round(rms, 5),
+                    "rms_skip_percent": round(
+                        100.0 * rms / geometry.working_width, 4),
+                    "worst_skip_m": round(
+                        max(b["worst_gap_cm"] for b in boundaries) / 100.0, 5),
+                    "gap_area_m2_per_100m": round(
+                        float(np.mean([b["gap_area_m2_per_100m"]
+                                       for b in boundaries])), 3),
+                    "coverage_basis": "measured between passes actually driven",
+                })
+            summary["boundaries"] = boundaries
+
+    passes_payload = None
+    if plan is not None:
+        series["pass_index"] = [int(v) for v in log.pass_index[::step]]
+        passes_payload = {
+            "plan": plan.summary(),
+            "worked": log.passes_worked,
+            "complete": log.passes_worked == plan.passes,
+            "lines": [{"index": i,
+                       "offset": round(plan.offset(i), 4),
+                       "forward": plan.forward(i)}
+                      for i in range(plan.passes)],
+            "detail": [_pass_detail(log, plan, i)
+                       for i in range(log.passes_worked)],
+        }
 
     pairing = None
     if implement is not None:
@@ -248,6 +371,7 @@ def run_simulation(req, max_steps: int) -> dict:
             pairing = None
 
     return {
+        "passes": passes_payload,
         "tractor": {"id": tractor.id, "name": tractor.name,
                     "wheelbase": tractor.wheelbase.value},
         "pairing": pairing,
@@ -259,6 +383,12 @@ def run_simulation(req, max_steps: int) -> dict:
         "summary": summary,
         "field": profile_summary,
         "scene": {
+            "plan": None if plan is None else {
+                "passes": plan.passes,
+                "working_width": round(plan.working_width, 4),
+                "length": round(plan.length, 2),
+                "headland": round(plan.headland, 2),
+            },
             "machine": machine_geometry(tractor, implement, geometry),
             "slope_deg": req.slope_deg,
             "slope_sign": req.slope_sign,
