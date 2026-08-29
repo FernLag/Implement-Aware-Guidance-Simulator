@@ -44,15 +44,27 @@ import numpy as np
 from .coverage import coverage_between_passes
 
 
-def optimal_gain(gains: np.ndarray, scores: np.ndarray) -> float:
+def optimal_gain(gains: np.ndarray, scores: np.ndarray,
+                 valid: np.ndarray | None = None) -> float:
     """Minimising gain, refined below grid spacing by a parabolic fit.
 
     Returns the grid minimum unchanged when it sits on an endpoint, or when
     the fitted vertex falls outside the bracketing interval (which means the
     three points are not well described by a parabola).
     """
+    if valid is not None:
+        # A run where the hitch reached its stop is not a candidate optimum:
+        # its error figures describe a machine folded into itself. Masking with
+        # infinity keeps the index alignment that the parabolic refinement below
+        # depends on.
+        scores = np.where(valid, scores, np.inf)
+
     i = int(np.argmin(scores))
     if i == 0 or i == len(gains) - 1:
+        return float(gains[i])
+    if valid is not None and not (valid[i - 1] and valid[i + 1]):
+        # Refining against a neighbour that is not a real measurement would
+        # move the answer using a number that means nothing.
         return float(gains[i])
 
     x0, x1, x2 = gains[i - 1], gains[i], gains[i + 1]
@@ -81,6 +93,23 @@ class TuningResult:
     working_width: float
     tractor_interior: bool = True
     implement_interior: bool = True
+    # Gains at which the hitch reached its stop. Those runs describe a machine
+    # folded into itself, so a configuration with any of them is not a clean
+    # optimisation problem and is reported rather than averaged in.
+    jackknifed_runs: int = 0
+    valid: np.ndarray | None = None
+
+    @property
+    def optimum_is_clean(self) -> bool:
+        """True when neither optimum sits next to an invalid run."""
+        if self.valid is None:
+            return True
+        for k in (self.k_tractor, self.k_implement):
+            i = int(np.argmin(np.abs(self.gains - k)))
+            lo, hi = max(0, i - 1), min(len(self.valid) - 1, i + 1)
+            if not self.valid[lo:hi + 1].all():
+                return False
+        return True
 
     @property
     def interior(self) -> bool:
@@ -103,12 +132,15 @@ class TuningResult:
     def relative_divergence(self) -> float:
         return self.divergence / self.k_tractor
 
+    def _masked(self, scores: np.ndarray) -> np.ndarray:
+        return scores if self.valid is None else np.where(self.valid, scores, np.inf)
+
     def edge_penalty_at_tractor_optimum(self) -> float:
         """How much worse the implement is when tuned for the tractor.
 
         The cost of optimising the wrong objective, as a fraction.
         """
-        best = float(np.min(self.rms_edge))
+        best = float(np.min(self._masked(self.rms_edge)))
         at_k_t = float(np.interp(self.k_tractor, self.gains, self.rms_edge))
         return (at_k_t - best) / best
 
@@ -130,9 +162,10 @@ def scan_gains(
 
     `run` maps a lookahead gain to a SimLog carrying an implement.
     """
-    rms_t, rms_e, rms_s = [], [], []
+    rms_t, rms_e, rms_s, valid = [], [], [], []
     for k in gains:
         log = run(float(k))
+        valid.append(not getattr(log, "jackknifed", False))
         rms_t.append(log.rms_cross_track(settle_time))
         rms_e.append(log.rms_worst_edge(settle_time))
         cov = coverage_between_passes(log, log, working_width, same_direction=True)
@@ -141,9 +174,10 @@ def scan_gains(
     rms_t = np.asarray(rms_t)
     rms_e = np.asarray(rms_e)
     rms_s = np.asarray(rms_s)
+    valid = np.asarray(valid, dtype=bool)
 
     def _interior(scores: np.ndarray) -> bool:
-        i = int(np.argmin(scores))
+        i = int(np.argmin(np.where(valid, scores, np.inf)))
         return 0 < i < len(scores) - 1
 
     return TuningResult(
@@ -151,10 +185,12 @@ def scan_gains(
         rms_tractor=rms_t,
         rms_edge=rms_e,
         rms_skip=rms_s,
-        k_tractor=optimal_gain(gains, rms_t),
-        k_implement=optimal_gain(gains, rms_e),
-        k_skip=optimal_gain(gains, rms_s),
+        k_tractor=optimal_gain(gains, rms_t, valid),
+        k_implement=optimal_gain(gains, rms_e, valid),
+        k_skip=optimal_gain(gains, rms_s, valid),
         working_width=working_width,
         tractor_interior=_interior(rms_t),
         implement_interior=_interior(rms_e),
+        jackknifed_runs=int((~valid).sum()),
+        valid=valid,
     )

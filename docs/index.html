@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Implement-Aware Agricultural Guidance Simulator</title>
+<meta name="description" content="A simulation comparing two error objectives in agricultural autosteer: where the tractor is, and where its implement edge actually is. The tuning that minimises one is not the tuning that minimises the other.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%2333291D'/%3E%3Cpath d='M4 14 H36' stroke='%23D8C79F' stroke-width='3'/%3E%3Cpath d='M4 25 C14 25, 18 29, 36 29' stroke='%23C2703F' stroke-width='3' fill='none'/%3E%3Ccircle cx='12' cy='14' r='3.4' fill='%238FA06B'/%3E%3C/svg%3E">
+<style>
+:root{--paper:#F6F1E7;--alt:#EDE4D2;--deep:#E4D9C2;--ink:#1F1A14;--soil:#33291D;
+--mid:#5C4A33;--faint:#8A7659;--clay:#8A4826;--clay2:#A35A32;--olive:#4C5A3A;
+--rule:#CFC1A3;--wheat:#D8C79F;
+--serif:Georgia,"Iowan Old Style","Times New Roman",serif;
+--sans:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
+font-size:1.02rem;line-height:1.65}
+.wrap{width:min(1080px,92vw);margin-inline:auto}
+h1,h2,h3{font-family:var(--serif);line-height:1.14;margin:0 0 1.1rem;font-weight:700}
+h1{font-size:clamp(2.1rem,5.4vw,3.4rem)}
+h2{font-size:clamp(1.5rem,3.2vw,2.1rem)}
+h3{font-size:1.1rem}
+p{margin:0 0 1.1rem;max-width:62ch}
+a{color:var(--clay);text-underline-offset:3px}
+a:hover{color:var(--ink)}
+:focus-visible{outline:3px solid var(--clay);outline-offset:2px}
+.skip{position:absolute;left:-9999px}.skip:focus{left:0;top:0;background:var(--soil);
+color:var(--paper);padding:.7rem 1.1rem;z-index:10}
+header{border-bottom:1px solid var(--rule)}
+.brand{display:inline-flex;align-items:center;gap:.7rem;padding:1.1rem 0;
+text-decoration:none;color:var(--ink)}
+.brand span{font-family:var(--serif);font-size:.95rem;line-height:1.2}
+.brand small{display:block;color:var(--mid);font-size:.8rem}
+.hero{padding:4rem 0 3rem;border-bottom:1px solid var(--rule)}
+.eyebrow{font-family:var(--mono);font-size:.75rem;letter-spacing:.14em;
+text-transform:uppercase;color:var(--faint);margin-bottom:.7rem}
+.lede{font-size:1.12rem;color:var(--mid)}
+.grid{display:grid;grid-template-columns:1.05fr .95fr;gap:3.5rem;align-items:center}
+figure{margin:0}
+figure svg{width:100%;height:auto;border:1px solid var(--rule);box-shadow:4px 4px 0 var(--deep)}
+figcaption{margin-top:1rem;font-size:.88rem;color:var(--mid)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.6rem;
+font:inherit;font-weight:600;padding:.85rem 1.6rem;border-radius:2px;border:1px solid transparent;
+text-decoration:none;cursor:pointer}
+.btn-primary{background:var(--clay);color:var(--paper);border-color:var(--clay)}
+.btn-primary:hover{background:var(--soil);border-color:var(--soil);color:var(--paper)}
+.btn-quiet{background:transparent;color:var(--ink);border-color:var(--faint)}
+.btn-quiet:hover{background:var(--alt)}
+.btn[disabled]{opacity:.75;cursor:progress}
+.actions{display:flex;gap:.7rem;flex-wrap:wrap;margin:1.6rem 0 1.2rem}
+.wake{border-left:3px solid var(--wheat);padding:.7rem 1.1rem;font-size:.9rem;
+color:var(--mid);margin:0;max-width:60ch}
+.wake:empty{display:none}
+.wake.bad{border-left-color:#8C2F1D;color:#8C2F1D}
+.band{padding:3.5rem 0;border-bottom:1px solid var(--rule)}
+.band.alt{background:var(--alt)}
+.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:2rem}
+.card{border-top:3px solid var(--clay2);padding-top:1rem}
+.card p{font-size:.95rem;color:var(--mid);margin:0}
+table{border-collapse:collapse;width:100%;max-width:62ch;font-size:.92rem;
+font-variant-numeric:tabular-nums;margin-bottom:1.6rem}
+th,td{text-align:right;padding:.4rem .7rem;border-bottom:1px solid var(--rule)}
+th:first-child,td:first-child{text-align:left}
+thead th{border-bottom:2px solid var(--faint);font-family:var(--mono);font-size:.72rem;
+text-transform:uppercase;letter-spacing:.06em}
+footer{background:var(--soil);color:var(--alt);padding:2.6rem 0;font-size:.9rem}
+footer a{color:var(--wheat)}
+footer p{max-width:78ch;color:#CFC4AF}
+@media(max-width:900px){.grid{grid-template-columns:1fr;gap:2.4rem}.cols{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="./">
+      <svg width="38" height="38" viewBox="0 0 40 40" role="img" aria-label="Project mark: a guidance line with an implement track offset below it">
+        <rect width="40" height="40" fill="#33291D"/>
+        <path d="M4 14 H36" stroke="#D8C79F" stroke-width="3"/>
+        <path d="M4 25 C14 25, 18 29, 36 29" stroke="#C2703F" stroke-width="3" fill="none"/>
+        <circle cx="12" cy="14" r="3.4" fill="#8FA06B"/>
+      </svg>
+      <span>Implement-Aware<small>Guidance Simulator</small></span>
+    </a>
+  </div>
+</header>
+
+<main id="main">
+<section class="hero">
+  <div class="wrap grid">
+    <div>
+      <p class="eyebrow">Agricultural autosteer, measured twice</p>
+      <h1>The tractor is on the line.<br>The implement is not.</h1>
+      <p class="lede">Coverage quality depends on where the working edge of the
+      implement sits, not on where the tractor sits. This simulator runs both at
+      once, on real field terrain read from USGS elevation data.</p>
+
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="open">Open the simulator</button>
+        <a class="btn btn-quiet" id="repo" href="https://github.com/FernLag/Implement-Aware-Guidance-Simulator">Read the source</a>
+      </div>
+      <p class="wake" id="wake" role="status" aria-live="polite"></p>
+    </div>
+
+    <figure>
+      <svg viewBox="0 0 420 260" role="img" aria-label="A dashed guidance line runs straight across a field. The tractor track follows it closely while the implement edge track settles further away and stays there, showing a persistent offset on a side slope.">
+        <rect width="420" height="260" fill="#EFE6D0"/>
+        <g stroke="#D6C9AA" stroke-width="1">
+          <path d="M0 40 H420 M0 80 H420 M0 120 H420 M0 160 H420 M0 200 H420 M0 240 H420"/>
+        </g>
+        <path d="M20 110 H400" stroke="#33291D" stroke-width="2" stroke-dasharray="8 6"/>
+        <path d="M20 175 C90 175, 130 116, 400 113" stroke="#4C5A3A" stroke-width="3.5" fill="none"/>
+        <path d="M20 205 C110 205, 150 152, 400 148" stroke="#A35A32" stroke-width="3.5" fill="none"/>
+        <g font-size="12" font-family="Georgia, serif" fill="#33291D">
+          <text x="298" y="102">guidance line</text>
+          <text x="298" y="132" fill="#4C5A3A">tractor</text>
+          <text x="298" y="168" fill="#A35A32">implement edge</text>
+        </g>
+        <path d="M404 113 V148" stroke="#33291D" stroke-width="1"/>
+        <text x="352" y="196" font-size="11" font-family="Georgia, serif" fill="#33291D">the gap that matters</text>
+      </svg>
+      <figcaption>A ten degree side slope. Both tracks settle, but not in the
+      same place, and only one of them is what the crop sees.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="band">
+  <div class="wrap">
+    <h2>The result</h2>
+    <p>On a ten degree side slope with a 12.19 m trailed planter at 3 m/s, the
+    tractor metric barely moves between controllers while the implement metric
+    tells a different story.</p>
+    <table>
+      <caption class="eyebrow" style="text-align:left;padding-bottom:.6rem">Steady-state error</caption>
+      <thead><tr><th scope="col">Controller</th><th scope="col">Tractor</th>
+        <th scope="col">Worst implement edge</th><th scope="col">Ratio</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Pure pursuit, k = 0.5</th><td>0.255 m</td><td>0.628 m</td><td>2.46</td></tr>
+        <tr><th scope="row">Stanley, k<sub>e</sub> = 20</th><td>0.168 m</td><td>0.541 m</td><td>3.22</td></tr>
+      </tbody>
+    </table>
+    <p>Stanley improves the tractor figure by 34 percent and the implement
+    figure by 14. Across the tuning sweep the two optimal lookahead gains
+    diverge in every configuration tested, though not in the direction the
+    project first assumed.</p>
+  </div>
+</section>
+
+<section class="band alt">
+  <div class="wrap">
+    <h2>How it is built</h2>
+    <div class="cols">
+      <article class="card">
+        <h3>Written by hand</h3>
+        <p>Kinematic bicycle model, RK4 integrator, pure pursuit and Stanley,
+        one-trailer hitch kinematics. No simulation framework, so the behaviour
+        is defensible line by line. Checked against closed forms wherever one
+        exists.</p>
+      </article>
+      <article class="card">
+        <h3>Every number has a source</h3>
+        <p>Eighteen tractors and twenty one implements. Each physical value
+        carries a citation or is flagged as an assumption with its reasoning.
+        A value with neither cannot be loaded.</p>
+      </article>
+      <article class="card">
+        <h3>Real ground</h3>
+        <p>Give it a location and it reads the field's actual slope from USGS
+        elevation at one metre resolution and runs on that, so the disturbance
+        changes under the machine as it drives.</p>
+      </article>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Simulation output from a kinematic model. Not measurements from a real
+    machine, and not validated against field trials. Several inputs are stated
+    assumptions rather than published specifications.</p>
+    <p>Equipment manufacturer names, model numbers and liveries are the
+    trademarks of their owners, used only to identify the machines whose
+    published specifications the catalog cites. Aerial imagery and elevation are
+    courtesy of the U.S. Geological Survey. Source released under the MIT
+    licence.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  // Set this to the deployed simulator. Left blank the button points at the
+  // source instead of at a link that would not work.
+  var APP = "";
+
+  var btn = document.getElementById("open");
+  var note = document.getElementById("wake");
+  var repo = document.getElementById("repo").href;
+
+  if (!APP) {
+    btn.textContent = "Read the source";
+    btn.addEventListener("click", function () { window.location.href = repo; });
+    note.textContent = "No live instance is configured for this page yet. " +
+      "Everything runs locally in a few commands; the repository explains how.";
+    return;
+  }
+
+  /* A free-tier instance sleeps when idle and takes about half a minute to
+     wake. Polling it and saying so is better than a blank wait that reads as
+     a broken link. */
+  btn.addEventListener("click", function () {
+    btn.disabled = true;
+    var started = Date.now();
+    var limit = 90000;
+
+    function tick() {
+      var secs = Math.round((Date.now() - started) / 1000);
+      btn.textContent = "Waking the server, " + secs + "s";
+      note.classList.remove("bad");
+      note.textContent = "This runs on a free hosting tier that sleeps when " +
+        "nobody is using it, so the first visit waits while it starts up. " +
+        "It usually takes about thirty seconds.";
+
+      fetch(APP + "/healthz", { cache: "no-store", mode: "cors" })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+        .then(function () { window.location.href = APP; })
+        .catch(function () {
+          if (Date.now() - started > limit) {
+            btn.disabled = false;
+            btn.textContent = "Try again";
+            note.classList.add("bad");
+            note.textContent = "The server did not answer within ninety " +
+              "seconds. It may be suspended for the month, since the free tier " +
+              "stops rather than billing. The source is linked beside this " +
+              "button and runs locally.";
+            return;
+          }
+          setTimeout(tick, 2500);
+        });
+    }
+    tick();
+  });
+})();
+</script>
+</body>
+</html>

@@ -172,8 +172,8 @@
      ground plane and nothing can be under it. */
   Scene.prototype.drawGround = function (ctx, terrain, b, focal, w, h, cx, tilt) {
     var step = 8, halfY = 56, back = 55, fwd = 120;
-    var map = terrain.map, img = terrain.patch.canvas;
-    var maxU = img.width, maxV = img.height;
+    var map = terrain.map, img = terrain.patch.image;
+    var maxU = terrain.patch.pixels, maxV = terrain.patch.pixels;
 
     function screen(x, y) {
       var p = place([x, y, 0], [0, 0], 0, tilt);

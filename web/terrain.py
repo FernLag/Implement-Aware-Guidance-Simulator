@@ -34,8 +34,9 @@ from collections import OrderedDict
 from dataclasses import dataclass
 
 IMAGERY_HOST = "basemap.nationalmap.gov"
+NAIP_HOST = "imagery.nationalmap.gov"
 ELEVATION_HOST = "elevation.nationalmap.gov"
-ALLOWED_HOSTS = frozenset({IMAGERY_HOST, ELEVATION_HOST})
+ALLOWED_HOSTS = frozenset({IMAGERY_HOST, NAIP_HOST, ELEVATION_HOST})
 
 TILE_URL = (
     "https://" + IMAGERY_HOST +
@@ -46,8 +47,32 @@ SAMPLES_URL = (
     "/arcgis/rest/services/3DEPElevation/ImageServer/getSamples"
 )
 
+# The National Map imagery tile service stops at zoom 16. Asking for 17 or
+# above returns 404 for every tile, which is exactly what happened when this
+# was first wired up: nine tiles all failed and the ground silently stayed
+# plain. Nothing above this is worth requesting.
+IMAGERY_MAX_ZOOM = 16
 MAX_ZOOM = 19
+
+NAIP_URL = (
+    "https://" + NAIP_HOST +
+    "/arcgis/rest/services/USGSNAIPImagery/ImageServer/exportImage"
+)
+# NAIP is 0.3 m at source, against 1.77 m for a zoom 16 tile.
+NAIP_PIXELS = 1024
+MAX_IMAGE_BYTES = 4 * 1024 * 1024
+# Outside its coverage NAIP does not fail: it returns a valid but blank JPEG,
+# which compresses to a fraction of the size of real imagery. Measured, a
+# genuine 1024 px field photograph runs 120 to 220 kB while a blank one is
+# under 20 kB. This is a heuristic and is treated as one: the real guard is
+# that the interface only asks for imagery once the elevation lookup has
+# already confirmed the location is covered.
+MIN_REAL_IMAGE_BYTES = 30 * 1024
 TIMEOUT = 6.0
+# A full field photograph is a couple of hundred kilobytes and the service is
+# sometimes slow to render one. Six seconds was enough to fail on perfectly
+# good responses, so image requests get their own budget.
+IMAGE_TIMEOUT = 20.0
 USER_AGENT = "implement-aware-guidance-simulator/1.0 (research tool)"
 
 # 3DEP reports missing data as a large negative sentinel rather than null.
@@ -110,14 +135,14 @@ def _ssl_context() -> ssl.SSLContext:
 _context = _ssl_context()
 
 
-def _open(url: str, data: bytes | None = None) -> bytes:
+def _open(url: str, data: bytes | None = None, timeout: float = TIMEOUT) -> bytes:
     host = urllib.parse.urlparse(url).hostname
     if host not in ALLOWED_HOSTS:
         # Belt on top of the fact that no URL here is caller supplied.
         raise TerrainError("refusing to fetch from an unexpected host")
     request = urllib.request.Request(url, data=data, headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT, context=_context) as response:
+        with urllib.request.urlopen(request, timeout=timeout, context=_context) as response:
             return response.read()
     except urllib.error.HTTPError as exc:
         raise TerrainError(f"upstream returned {exc.code}") from None
@@ -147,6 +172,66 @@ def fetch_tile(z: int, x: int, y: int) -> bytes:
         raise TerrainError("unexpected tile payload")
     _tiles.put(key, blob)
     return blob
+
+
+def _mercator(lat: float, lon: float) -> tuple[float, float]:
+    r = 6378137.0
+    x = r * math.radians(lon)
+    y = r * math.log(math.tan(math.pi / 4.0 + math.radians(lat) / 2.0))
+    return x, y
+
+
+def fetch_field_image(lat: float, lon: float, ground_half_m: float,
+                      pixels: int = NAIP_PIXELS) -> tuple[bytes, dict]:
+    """One aerial photograph covering a known square of ground.
+
+    Preferred over the tile service for two reasons. NAIP is 0.3 m at source
+    against 1.77 m for the best available tile, and asking for an exact
+    bounding box means the mapping from field coordinates to image pixels is
+    exact rather than reconstructed from tile arithmetic.
+
+    Web Mercator distances are stretched by 1/cos(latitude), so the requested
+    box is widened by that factor to cover the ground metres asked for. Getting
+    this wrong would scale the photograph against the machine.
+    """
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+        raise TerrainError("coordinate outside the globe")
+    ground_half_m = max(40.0, min(1500.0, float(ground_half_m)))
+    pixels = max(256, min(2048, int(pixels)))
+
+    scale = 1.0 / max(0.05, math.cos(math.radians(lat)))
+    half = ground_half_m * scale
+    cx, cy = _mercator(lat, lon)
+    query = urllib.parse.urlencode({
+        "bbox": f"{cx - half},{cy - half},{cx + half},{cy + half}",
+        "bboxSR": 3857, "imageSR": 3857,
+        "size": f"{pixels},{pixels}",
+        "format": "jpeg", "f": "image",
+    })
+
+    key = ("naip", round(lat, 5), round(lon, 5), round(ground_half_m, 1), pixels)
+    cached = _tiles.get(key)
+    if cached is not None:
+        return cached
+
+    blob = _open(NAIP_URL + "?" + query, timeout=IMAGE_TIMEOUT)
+    if not blob or len(blob) > MAX_IMAGE_BYTES:
+        raise TerrainError("unexpected image payload")
+    if blob[:2] != bytes([0xFF, 0xD8]):
+        # The service answers some errors as JSON with a 200, so the bytes are
+        # the only reliable signal that a photograph came back at all.
+        raise TerrainError("the imagery service did not return a photograph")
+    if len(blob) < MIN_REAL_IMAGE_BYTES:
+        raise TerrainError("no aerial imagery covers this location")
+
+    meta = {
+        "pixels": pixels,
+        "ground_half_m": round(ground_half_m, 1),
+        "metres_per_pixel": round(2.0 * ground_half_m / pixels, 4),
+        "source": "USGS NAIP",
+    }
+    _tiles.put(key, (blob, meta))
+    return blob, meta
 
 
 def tile_for(lat: float, lon: float, zoom: int) -> tuple[int, int]:

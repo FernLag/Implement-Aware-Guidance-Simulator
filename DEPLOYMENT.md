@@ -122,6 +122,21 @@ implement kinematics to JavaScript, plus a second implementation to keep in
 step with the Python one. It is the right answer if this becomes something
 people are pointed at often, and the wrong one while it is still changing.
 
+## The cold start, and a landing page
+
+A free instance sleeps after fifteen minutes and takes roughly half a minute to
+wake, which is a poor first impression for a link on a CV. The server cannot
+fix this, because it is the thing that is asleep.
+
+`docs/index.html` is a static landing page for GitHub Pages: it loads instantly,
+explains the project, and when the visitor asks for the simulator it polls
+`/healthz` and says "waking the server, 14s" instead of showing a blank wait.
+Set `APP` at the top of its script to the deployed URL, then turn on Pages for
+the `/docs` folder in the repository settings.
+
+`/healthz` is the only route that answers cross-origin. It takes no input and
+returns no data about anything, so widening it costs nothing.
+
 ## Before any public deployment
 
 - Set `AGGSIM_SECRET_KEY`. Without it each process invents its own, and with

@@ -155,3 +155,61 @@ def test_edge_penalty_is_non_negative(params, geometry):
 
     res = scan_gains(run, gains, geometry.working_width)
     assert res.edge_penalty_at_tractor_optimum() >= -1e-12
+
+
+# --- runs that are not physically valid must not become optima -------------
+
+def test_invalid_runs_are_excluded_from_the_search():
+    """A gain where the hitch reached its stop describes a machine folded into
+    itself. Letting it win the minimum would report nonsense as an optimum."""
+    gains = np.arange(0.1, 0.81, 0.1)
+    # The lowest score sits on an invalid run.
+    scores = np.array([0.1, 1.0, 0.9, 0.8, 0.85, 0.9, 0.95])
+    valid = np.array([False, True, True, True, True, True, True])
+    assert optimal_gain(gains, scores) == pytest.approx(0.1)
+    assert optimal_gain(gains, scores, valid) == pytest.approx(0.4, abs=0.06)
+
+
+def test_refinement_is_skipped_beside_an_invalid_neighbour():
+    """Fitting a parabola through a number that means nothing would move the
+    answer using that number."""
+    gains = np.arange(0.1, 0.51, 0.1)
+    scores = np.array([9.0, 1.0, 0.5, 0.9, 1.2])
+    valid = np.array([True, False, True, True, True])
+    assert optimal_gain(gains, scores, valid) == pytest.approx(0.3)
+
+
+def test_a_clean_optimum_is_reported_as_clean(monkeypatch):
+    result = _fake_result(valid=np.ones(7, dtype=bool))
+    assert result.optimum_is_clean is True
+
+
+def test_an_optimum_beside_an_excluded_run_is_flagged():
+    valid = np.ones(7, dtype=bool)
+    valid[3] = False  # right next to the minimum
+    assert _fake_result(valid=valid).optimum_is_clean is False
+
+
+def _fake_result(valid):
+    from aggsim.analysis.tuning import TuningResult
+
+    gains = np.arange(0.1, 0.81, 0.1)
+    scores = np.array([1.0, 0.9, 0.8, 0.7, 0.75, 0.9, 1.0])
+    return TuningResult(
+        gains=gains, rms_tractor=scores, rms_edge=scores, rms_skip=scores,
+        k_tractor=0.4, k_implement=0.4, k_skip=0.4, working_width=6.0,
+        valid=valid,
+    )
+
+
+def test_scan_gains_reports_how_many_runs_were_excluded(params, geometry):
+    gains = np.arange(0.3, 0.61, 0.1)
+    steering = load_steering()
+
+    def run(k):
+        return _run(params, geometry, k=k, e0=1.0, duration=40.0,
+                    terrain=Terrain(slope_angle=np.radians(8.0)), steering=steering)
+
+    res = scan_gains(run, gains, geometry.working_width)
+    assert res.jackknifed_runs == int((~res.valid).sum())
+    assert res.valid.shape == gains.shape

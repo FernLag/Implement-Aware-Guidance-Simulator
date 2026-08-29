@@ -90,9 +90,15 @@ def main() -> None:
                        k_tractor=res.k_tractor, k_implement=res.k_implement,
                        k_skip=res.k_skip, divergence=res.divergence,
                        penalty=penalty, interior=res.interior,
+                       jackknifed=res.jackknifed_runs,
+                       clean=res.optimum_is_clean,
                        whip=res.tractor_improves_while_implement_worsens())
             records.append(rec)
             flag = "" if res.interior else "  <- endpoint, not an optimum"
+            if res.jackknifed_runs:
+                flag += f"  [{res.jackknifed_runs} excluded]"
+            if not res.optimum_is_clean:
+                flag += "  <- optimum next to an excluded run"
             print(f'    {imp.model[:34]:34s} {g.working_width:6.2f} '
                   f'{g.implement_wheelbase:5.2f} {deg:6.1f} '
                   f'{res.k_tractor:8.3f} {res.k_implement:8.3f} '
@@ -149,6 +155,40 @@ def main() -> None:
                   f'gap={res.divergence:+.4f}')
             sys.stdout.flush()
 
+    # --- sweep 5: real ground rather than a uniform hillside -------------
+    print("\n  SWEEP 5: real field terrain (USGS 3DEP), v = 3 m/s, tilled")
+    real_recs = []
+    try:
+        from aggsim.config.terrain import SlopeProfile
+        from web.terrain import slope_profile as fetch_profile
+
+        sampled = fetch_profile(46.7300, -117.1800, 0.0, length_m=200.0)
+        real_profile = SlopeProfile(
+            positions=np.asarray(sampled["positions_m"], dtype=float),
+            side_slope=np.asarray(sampled["side_slope_rad"], dtype=float),
+            source="USGS 3DEP 46.7300, -117.1800",
+        )
+        print(f"    profile: {sampled['stations']} stations, "
+              f"{sampled['min_deg']:+.2f} to {sampled['max_deg']:+.2f} deg, "
+              f"{sampled['elevation_change_m']} m of relief")
+        for imp in (trailed[0], trailed[len(trailed) // 2], trailed[-1]):
+            g = implement_from_catalog(imp)
+            terrain = Terrain(slip=0.12, profile=real_profile)
+            res = scan_gains(runner(params, g, 3.0, terrain, steering),
+                             GAINS, g.working_width)
+            real_recs.append(dict(model=imp.model, width=g.working_width,
+                                  k_tractor=res.k_tractor,
+                                  k_implement=res.k_implement,
+                                  divergence=res.divergence,
+                                  interior=res.interior))
+            print(f'    {imp.model[:32]:32s} w={g.working_width:5.2f}  '
+                  f'k_t={res.k_tractor:.3f} k_i={res.k_implement:.3f} '
+                  f'gap={res.divergence:+.4f}')
+            sys.stdout.flush()
+    except Exception as exc:
+        print(f"    skipped: {exc.__class__.__name__}: {exc}")
+        print("    (needs network access to USGS; the rest of the sweep is unaffected)")
+
     # --- detail curve for one representative configuration ---------------
     g_mid = implement_from_catalog(trailed[len(trailed) // 2])
     terrain = Terrain(slope_angle=np.radians(10.0), slip=0.12)
@@ -176,13 +216,17 @@ def main() -> None:
               f'{cov_t.rms_skip_percent:8.3f}%')
 
     # --- verdict ----------------------------------------------------------
-    usable = [r for r in records if r["interior"]]
+    usable = [r for r in records if r["interior"] and r["clean"]]
     gaps = np.array([r["divergence"] for r in usable])
     penalties = np.array([r["penalty"] for r in usable])
     whips = [r for r in usable if r["whip"]]
     print("\n  VERDICT")
-    print(f"    configurations: {len(records)} run, {len(usable)} with both "
-          "minima interior to the searched range")
+    dirty = [r for r in records if r["interior"] and not r["clean"]]
+    print(f"    configurations: {len(records)} run, {len(usable)} usable "
+          f"(interior minima, and neither optimum adjacent to an excluded run)")
+    if dirty:
+        print(f"    {len(dirty)} discarded because an optimum sat next to a "
+              "gain where the hitch reached its stop")
     if not len(gaps):
         print("    no configuration produced two genuine optima; "
               "nothing can be concluded")
@@ -196,11 +240,14 @@ def main() -> None:
           f"max {penalties.max() * 100:.2f}% extra RMS edge error")
     print(f"    configurations where tightening the tractor worsens the "
           f"implement: {len(whips)} of {len(records)}")
+    jk = sum(r["jackknifed"] for r in records)
+    print(f"    gain settings where the hitch reached its stop: {jk} "
+          f"(those runs are not valid optimisation points)")
 
     OUT_DIR.mkdir(exist_ok=True)
     (OUT_DIR / "stage6_results.json").write_text(json.dumps(
         dict(records=records, speed=speed_recs, slip=slip_recs,
-             correction=corr_recs, agronomic=agro),
+             correction=corr_recs, real_terrain=real_recs, agronomic=agro),
         indent=2, default=float))
 
     # --- figure -----------------------------------------------------------

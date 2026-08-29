@@ -517,21 +517,23 @@
             " degrees and " + Math.abs(info.along_slope_deg).toFixed(2) +
             " degrees along the line. Sampled from " + info.samples +
             " points at " + info.resolution_m + " m resolution. " + info.attribution + ".";
-          var travel = parseFloat(document.getElementById("speed").value || 3) * 60;
-          return window.GuidanceTerrain.loadImagery(here.lat, here.lon, travel);
+          var travel = (parseFloat(document.getElementById("speed").value) || 3) * 60;
+          return window.GuidanceTerrain.loadImagery(here.lat, here.lon, heading, travel);
         })
         .then(function (patch) {
-          if (patch.tilesLoaded === 0) {
-            terrain = null;
-            note.textContent += " No aerial imagery was available for that " +
-              "location, so the ground stays plain. The slope figures above " +
-              "are still real.";
-          } else {
-            terrain = { patch: patch, map: window.GuidanceTerrain.mapper(patch, heading) };
-            note.textContent += " Aerial photograph loaded: " + patch.tilesLoaded +
-              " of " + patch.tilesRequested + " tiles covering about " +
-              Math.round(patch.extentM) + " m of ground.";
-          }
+          terrain = { patch: patch, map: window.GuidanceTerrain.mapper(patch, heading) };
+          note.textContent += " Aerial photograph loaded at " +
+            patch.metresPerPixel.toFixed(2) + " m per pixel, covering " +
+            Math.round(patch.extentM) + " m of ground.";
+          if (sceneData) { drawFrame(frame); }
+        })
+        .catch(function (e) {
+          // The slope was read even if the photograph was not, and that is
+          // worth keeping rather than discarding with the imagery.
+          terrain = null;
+          note.textContent += " " + (e && e.message ? e.message :
+            "The aerial photograph could not be loaded.") +
+            " The slope figures above are still real.";
           if (sceneData) { drawFrame(frame); }
         })
         .catch(function (e) {

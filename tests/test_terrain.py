@@ -55,9 +55,11 @@ def test_out_of_range_tile_is_a_client_error_not_a_gateway_error(client):
     assert client.get("/api/tile/25/0/0").status_code == 400
 
 
-def test_only_the_two_usgs_hosts_are_reachable():
+def test_only_the_usgs_hosts_are_reachable():
     """No part of a URL comes from a request, and the host is checked anyway."""
-    assert terrain.ALLOWED_HOSTS == {terrain.IMAGERY_HOST, terrain.ELEVATION_HOST}
+    assert terrain.ALLOWED_HOSTS == {
+        terrain.IMAGERY_HOST, terrain.NAIP_HOST, terrain.ELEVATION_HOST,
+    }
     with pytest.raises(terrain.TerrainError, match="unexpected host"):
         terrain._open("https://example.com/anything")
     with pytest.raises(terrain.TerrainError, match="unexpected host"):
@@ -224,13 +226,107 @@ def test_csp_is_unchanged_by_the_imagery_feature(client):
     assert "usgs" not in csp.lower()
 
 
-def test_the_page_requests_tiles_from_this_origin_only():
+def test_the_page_requests_imagery_from_this_origin_only():
     from pathlib import Path
     source = (Path(terrain.__file__).parent / "static" / "js" / "terrain.js").read_text()
-    assert "/api/tile/" in source
+    assert "/api/" in source
     assert "https://" not in source and "http://" not in source
 
 
 def test_attribution_is_shown_and_returned(client):
     assert "U.S. Geological Survey" in client.get("/").get_data(as_text=True)
     assert "U.S. Geological Survey" in terrain.ATTRIBUTION
+
+
+# --- the aerial photograph -------------------------------------------------
+
+JPEG = bytes([0xFF, 0xD8]) + b"x" * 200_000
+BLANK = bytes([0xFF, 0xD8]) + b"x" * 5_000
+
+
+def test_the_tile_service_stops_at_zoom_16():
+    """Asking above this returned 404 for every tile, which is why the ground
+    silently stayed plain: nine failures and no imagery."""
+    assert terrain.IMAGERY_MAX_ZOOM == 16
+
+
+def test_field_image_returns_a_photograph(monkeypatch):
+    monkeypatch.setattr(terrain, "_open", lambda url, data=None, timeout=None: JPEG)
+    blob, meta = terrain.fetch_field_image(42.03, -93.65, 160.0)
+    assert blob is JPEG
+    assert meta["metres_per_pixel"] == pytest.approx(2 * 160.0 / 1024)
+    assert meta["ground_half_m"] == 160.0
+
+
+def test_blank_imagery_outside_coverage_is_refused(monkeypatch):
+    """NAIP does not fail outside the United States: it returns a valid but
+    blank JPEG, which the magic-byte check alone happily accepted."""
+    monkeypatch.setattr(terrain, "_open", lambda url, data=None, timeout=None: BLANK)
+    with pytest.raises(terrain.TerrainError, match="no aerial imagery"):
+        terrain.fetch_field_image(51.5, -0.12, 160.0)
+
+
+def test_a_json_error_body_is_not_mistaken_for_an_image(monkeypatch):
+    monkeypatch.setattr(terrain, "_open",
+                        lambda url, data=None, timeout=None: b'{"error":{"code":400}}')
+    with pytest.raises(terrain.TerrainError, match="did not return a photograph"):
+        terrain.fetch_field_image(42.0, -93.0, 160.0)
+
+
+def test_web_mercator_stretch_is_corrected(monkeypatch):
+    """Mercator metres are stretched by 1/cos(latitude). Ignoring that would
+    scale the photograph against the machine standing on it."""
+    seen = {}
+
+    def capture(url, data=None, timeout=None):
+        seen["url"] = url
+        return JPEG
+
+    monkeypatch.setattr(terrain, "_open", capture)
+    terrain.fetch_field_image(60.0, 0.0, 100.0)  # cos(60) = 0.5
+
+    import urllib.parse
+    bbox = urllib.parse.parse_qs(urllib.parse.urlparse(seen["url"]).query)["bbox"][0]
+    x0, y0, x1, y1 = (float(v) for v in bbox.split(","))
+    # 100 ground metres at 60 degrees is 200 mercator metres either side.
+    assert (x1 - x0) / 2 == pytest.approx(200.0, rel=1e-6)
+
+
+def test_images_get_a_longer_timeout_than_json():
+    """Six seconds failed on perfectly good 175 kB responses."""
+    assert terrain.IMAGE_TIMEOUT > terrain.TIMEOUT
+
+
+def test_image_extent_and_size_are_clamped(monkeypatch):
+    monkeypatch.setattr(terrain, "_open", lambda url, data=None, timeout=None: JPEG)
+    _, small = terrain.fetch_field_image(42.0, -93.0, 1.0)
+    _, huge = terrain.fetch_field_image(42.0, -93.0, 99999.0)
+    assert small["ground_half_m"] == 40.0
+    assert huge["ground_half_m"] == 1500.0
+
+
+def test_field_image_endpoint_validates_its_input(client, monkeypatch):
+    monkeypatch.setattr(terrain, "_open", lambda url, data=None, timeout=None: JPEG)
+    assert client.get("/api/field-image?lat=42&lon=-93&extent=160").status_code == 200
+    assert client.get("/api/field-image?lat=abc&lon=-93").status_code == 400
+    assert client.get("/api/field-image?lat=999&lon=-93").status_code == 400
+    assert client.get("/api/field-image").status_code == 400
+
+
+def test_field_image_endpoint_reports_missing_coverage(client, monkeypatch):
+    monkeypatch.setattr(terrain, "_open", lambda url, data=None, timeout=None: BLANK)
+    r = client.get("/api/field-image?lat=51.5&lon=-0.12&extent=160")
+    assert r.status_code == 502
+    assert "no aerial imagery" in r.get_json()["message"]
+
+
+def test_naip_host_is_in_the_allowlist():
+    assert terrain.NAIP_HOST in terrain.ALLOWED_HOSTS
+    assert len(terrain.ALLOWED_HOSTS) == 3
+
+
+def test_the_client_asks_this_origin_for_the_photograph():
+    from pathlib import Path
+    source = (Path(terrain.__file__).parent / "static" / "js" / "terrain.js").read_text()
+    assert "/api/field-image?" in source
+    assert "https://" not in source

@@ -19,7 +19,8 @@ from .security import (
 )
 from .simulation import SimulationError, catalog_payload, run_simulation
 from .terrain import (
-    ATTRIBUTION, TerrainError, fetch_tile, field_slope, tile_for, valid_tile,
+    ATTRIBUTION, TerrainError, fetch_field_image, fetch_tile, field_slope,
+    tile_for, valid_tile,
 )
 
 log = logging.getLogger("aggsim.web")
@@ -56,7 +57,14 @@ def create_app(settings: Settings | None = None) -> Flask:
             return None
         scope = "api" if request.path.startswith("/api/") else "page"
         cost = 4.0 if request.path == "/api/simulate" else 1.0
-        if request.path.startswith("/api/tile/"):
+        if request.path == "/api/field-image":
+            # One image replaces nine tiles, so it is worth a little more.
+            scope, cost = "tile", 1.5
+        elif request.path == "/healthz":
+            # Waking a sleeping instance takes several polls, so this must not
+            # be the thing that rate limits the visitor out.
+            scope, cost = "health", 0.2
+        elif request.path.startswith("/api/tile/"):
             # Tiles are small, cached, and a single view needs several, so they
             # cost less than a simulation while still being counted.
             scope, cost = "tile", 0.5
@@ -173,6 +181,36 @@ def create_app(settings: Settings | None = None) -> Flask:
         response.headers["X-Imagery-Attribution"] = ATTRIBUTION
         return response
 
+    @app.get("/api/field-image")
+    def api_field_image():
+        """One aerial photograph of a field, proxied.
+
+        Every parameter is parsed and clamped here; nothing from the request
+        reaches a URL. Preferred over the tile route because NAIP is 0.3 m at
+        source and one request replaces nine.
+        """
+        try:
+            lat = float(request.args.get("lat", ""))
+            lon = float(request.args.get("lon", ""))
+            extent = float(request.args.get("extent", 160.0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "bad_request",
+                            "message": "lat, lon and extent must be numbers."}), 400
+        if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+            return jsonify({"error": "bad_request",
+                            "message": "Coordinates are outside the globe."}), 400
+        try:
+            blob, meta = fetch_field_image(lat, lon, extent)
+        except TerrainError as exc:
+            return jsonify({"error": "imagery_unavailable", "message": str(exc)}), 502
+
+        response = app.response_class(blob, mimetype="image/jpeg")
+        response.headers["Cache-Control"] = "public, max-age=604800, immutable"
+        response.headers["X-Imagery-Attribution"] = ATTRIBUTION
+        response.headers["X-Ground-Half-Metres"] = str(meta["ground_half_m"])
+        response.headers["X-Metres-Per-Pixel"] = str(meta["metres_per_pixel"])
+        return response
+
     @app.post("/api/field")
     def api_field():
         if not request.is_json:
@@ -214,6 +252,21 @@ def create_app(settings: Settings | None = None) -> Flask:
             "tile": {"z": zoom, "x": tx, "y": ty},
             "attribution": ATTRIBUTION,
         })
+
+    @app.get("/healthz")
+    def healthz():
+        """Liveness, readable cross-origin.
+
+        This exists so a static landing page hosted elsewhere can tell when a
+        sleeping free-tier instance has woken up, and show that instead of a
+        blank thirty second wait. It is the ONLY route that answers
+        cross-origin, it takes no input, and it returns no data about anything,
+        so widening it costs nothing.
+        """
+        response = jsonify({"ok": True, "service": "guidance-simulator"})
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     # ---- crawl surface ---------------------------------------------------
 

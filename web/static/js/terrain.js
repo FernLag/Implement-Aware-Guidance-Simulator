@@ -12,71 +12,46 @@
 (function () {
   "use strict";
 
-  var TILE = 256;
-  var EQUATOR = 40075016.686;
+  var METRES_PER_DEG_LAT = 111320.0;
 
-  function globalPixel(lat, lon, z) {
-    var n = TILE * Math.pow(2, z);
-    var x = (lon + 180) / 360 * n;
-    var s = Math.sin(lat * Math.PI / 180);
-    var y = (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n;
-    return [x, y];
-  }
+  /* One aerial photograph covering the whole run, rather than a grid of tiles.
 
-  function metresPerPixel(lat, z) {
-    return EQUATOR * Math.cos(lat * Math.PI / 180) / (TILE * Math.pow(2, z));
-  }
+     The tile service tops out at zoom 16, which is 1.77 m per pixel, and
+     asking for anything above it returns 404 for every tile. That is what made
+     the ground stay plain: nine failed requests and no imagery. NAIP is 0.3 m
+     at source and one request covers exactly the ground needed, so the mapping
+     from field coordinates to pixels is exact instead of reconstructed. */
+  function loadFieldImage(lat, lon, headingDeg, travelMetres) {
+    var psi = headingDeg * Math.PI / 180;
+    var travel = Math.max(60, travelMetres || 180);
 
-  /* Load a 3 by 3 block of tiles around a point and composite them. */
-  function loadPatch(lat, lon, zoom) {
-    var n = Math.pow(2, zoom);
-    var gp = globalPixel(lat, lon, zoom);
-    var tx = Math.floor(gp[0] / TILE), ty = Math.floor(gp[1] / TILE);
+    // Centre the photograph on the middle of the run so its resolution is
+    // spent where the machine actually goes.
+    var mid = travel / 2;
+    var mpdLon = METRES_PER_DEG_LAT * Math.max(0.05, Math.cos(lat * Math.PI / 180));
+    var midLat = lat + (mid * Math.cos(psi)) / METRES_PER_DEG_LAT;
+    var midLon = lon + (mid * Math.sin(psi)) / mpdLon;
 
-    var canvas = document.createElement("canvas");
-    canvas.width = TILE * 3;
-    canvas.height = TILE * 3;
-    var ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#9C8F76";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    var half = Math.min(900, travel * 0.62 + 55);
 
-    var pending = [];
-    for (var dx = -1; dx <= 1; dx++) {
-      for (var dy = -1; dy <= 1; dy++) {
-        (function (dx, dy) {
-          var X = tx + dx, Y = ty + dy;
-          if (X < 0 || Y < 0 || X >= n || Y >= n) { return; }
-          pending.push(new Promise(function (resolve) {
-            var img = new Image();
-            img.onload = function () {
-              ctx.drawImage(img, (dx + 1) * TILE, (dy + 1) * TILE);
-              resolve(true);
-            };
-            // A missing tile leaves the fallback colour rather than failing
-            // the whole patch: partial coverage is better than none.
-            img.onerror = function () { resolve(false); };
-            img.src = "/api/tile/" + zoom + "/" + X + "/" + Y;
-          }));
-        })(dx, dy);
-      }
-    }
-
-    var originU = gp[0] - (tx - 1) * TILE;
-    var originV = gp[1] - (ty - 1) * TILE;
-    var mpp = metresPerPixel(lat, zoom);
-
-    return Promise.all(pending).then(function (results) {
-      var loaded = results.filter(Boolean).length;
-      return {
-        canvas: canvas,
-        originU: originU,
-        originV: originV,
-        metresPerPixel: mpp,
-        zoom: zoom,
-        tilesLoaded: loaded,
-        tilesRequested: results.length,
-        extentM: canvas.width * mpp
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      img.onload = function () {
+        resolve({
+          image: img,
+          pixels: img.naturalWidth || 1024,
+          halfMetres: half,
+          midAlong: mid,
+          metresPerPixel: (2 * half) / (img.naturalWidth || 1024),
+          extentM: 2 * half
+        });
       };
+      img.onerror = function () {
+        reject(new Error("No aerial imagery is available for that location. " +
+          "NAIP covers the United States only."));
+      };
+      img.src = "/api/field-image?lat=" + midLat.toFixed(6) +
+        "&lon=" + midLon.toFixed(6) + "&extent=" + Math.round(half);
     });
   }
 
@@ -95,22 +70,23 @@
       });
     },
 
-    /* Imagery covering the run, at a zoom that fits the distance travelled. */
-    loadImagery: function (lat, lon, travelMetres) {
-      var zoom = travelMetres > 260 ? 17 : 18;
-      return loadPatch(lat, lon, zoom);
+    /* One photograph covering the run. */
+    loadImagery: function (lat, lon, headingDeg, travelMetres) {
+      return loadFieldImage(lat, lon, headingDeg, travelMetres);
     },
 
-    /* Model coordinates to texture pixels. The AB line runs along model x, so
-       the heading rotates model space into east and north before sampling. */
+    /* Model coordinates to image pixels. The line runs along model x, so the
+       heading rotates model space into east and north, measured from the
+       centre of the photograph rather than from the start of the run. */
     mapper: function (patch, headingDeg) {
       var psi = headingDeg * Math.PI / 180;
       var sinp = Math.sin(psi), cosp = Math.cos(psi);
+      var half = patch.pixels / 2, mpp = patch.metresPerPixel;
       return function (x, y) {
-        var east = x * sinp - y * cosp;
-        var north = x * cosp + y * sinp;
-        return [patch.originU + east / patch.metresPerPixel,
-                patch.originV - north / patch.metresPerPixel];
+        var dx = x - patch.midAlong;
+        var east = dx * sinp - y * cosp;
+        var north = dx * cosp + y * sinp;
+        return [half + east / mpp, half - north / mpp];
       };
     },
 

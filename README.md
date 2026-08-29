@@ -25,7 +25,7 @@ is. Nearly all published path-tracking work optimises tractor error.
 git clone https://github.com/FernLag/Implement-Aware-Guidance-Simulator.git
 cd Implement-Aware-Guidance-Simulator
 python3 -m pip install -r requirements.txt
-python3 -m pytest tests/ -q          # 305 tests, ~105 s
+python3 -m pytest tests/ -q          # 321 tests, ~95 s
 ```
 
 Requires Python 3.11+. Dependencies are NumPy, Matplotlib, PyYAML and pytest.
@@ -142,7 +142,7 @@ The difference between the two metrics is **0.3725 m for every controller and
 every gain tested**, a controller-independent constant set by the crab angle
 acting on the implement's longitudinal offset.
 
-**Stage 6, the central experiment.** Across 24 configurations, the two optimal
+**Stage 6, the central experiment.** Across 51 configurations, the two optimal
 lookahead gains diverge in every one, by more than one grid step in every one:
 
 | | k_tractor | k_implement | gap |
@@ -366,7 +366,7 @@ aggsim/
     tuning.py       dual-objective gain search (Stage 6)
 scripts/          one demo script per stage, plus asset and audit tools
 web/              browser interface (Flask), separate from the simulation core
-tests/            305 tests
+tests/            321 tests
 ```
 
 ### Conventions
@@ -396,7 +396,10 @@ tests/            305 tests
 | 6 · Dual-objective tuning | done, 24 configurations |
 | 7 · ROS 2 / Gazebo validation | conditional on 0–6 |
 
-Stage 6 is complete and the divergence is real, but two caveats bound it.
+Stage 6 is complete and the divergence is real, but three caveats bound it.
+**144 gain settings were excluded** because the hitch reached its stop there;
+those runs describe a machine folded into itself and are not candidate optima,
+so they are masked out of the search rather than averaged in.
 **The practical cost is small:** tuning for the tractor costs on average 0.81%
 extra RMS edge error, at most 1.51%. The optima are statistically distinct and
 agronomically marginal at these settings. **And the scenario is load-bearing:**
