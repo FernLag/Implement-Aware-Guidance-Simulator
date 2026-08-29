@@ -174,20 +174,37 @@
     this.quad(d, a, e, h, colour);
   };
 
+  /* A closed wheel.
+   *
+   * The tread band alone leaves the sides open between the rim and the tyre
+   * radius, so you could see straight into it. A wheel needs a sidewall
+   * annulus on BOTH faces, a rim disc on both, and a hub, or it is a hoop. */
   Builder.prototype.wheel = function (o, yaw, tilt, cx, cy, radius, width, steer,
                                       sides, rimCol, spin) {
     var hw = width / 2, cs = Math.cos(steer || 0), sn = Math.sin(steer || 0);
     var roll = spin || 0;
+    var rim = rimCol || COL.steel;
+    var wall = mixc(COL.tyre, [1, 1, 1], 0.08);
     var self = this;
+
     function pt(ang, r, side) {
       ang += roll;
       var x = Math.cos(ang) * r, z = Math.sin(ang) * r, y = side * hw;
       return place([cx + x * cs - y * sn, cy + x * sn + y * cs, radius + z], o, yaw, tilt);
     }
+
+    var rimR = radius * 0.58;
     for (var i = 0; i < sides; i++) {
       var a0 = (i / sides) * Math.PI * 2, a1 = ((i + 1) / sides) * Math.PI * 2;
+
       self.quad(pt(a0, radius, -1), pt(a1, radius, -1), pt(a1, radius, 1),
         pt(a0, radius, 1), COL.tyre);
+      // Sidewalls, the pieces that were missing.
+      self.quad(pt(a0, rimR, -1), pt(a1, rimR, -1), pt(a1, radius, -1),
+        pt(a0, radius, -1), wall);
+      self.quad(pt(a0, radius, 1), pt(a1, radius, 1), pt(a1, rimR, 1),
+        pt(a0, rimR, 1), wall);
+
       if (i % 2 === 0) {
         var lr = radius * 1.05;
         self.quad(pt(a0, lr, -0.95), pt(a1, lr, -0.2), pt(a1, radius, -0.2),
@@ -196,15 +213,32 @@
           pt(a0, lr, 0.2), COL.lug);
       }
     }
-    var rimR = radius * 0.58, outer = [], hub = [];
-    for (var j = 0; j < sides; j++) {
-      var a = (j / sides) * Math.PI * 2;
-      outer.push(pt(a, rimR, 1.01));
-      hub.push(pt(a, rimR * 0.34, 1.02));
-    }
-    this.fan(outer, rimCol || COL.steel);
-    this.fan(hub, mixc(rimCol || COL.steel, [0, 0, 0], 0.4));
+
+    [1, -1].forEach(function (side) {
+      var disc = [], hub = [];
+      for (var j = 0; j < sides; j++) {
+        var a = (j / sides) * Math.PI * 2;
+        disc.push(pt(a, rimR, side * 1.005));
+        hub.push(pt(a, rimR * 0.34, side * 1.02));
+      }
+      self.fan(disc, rim, side < 0);
+      self.fan(hub, mixc(rim, [0, 0, 0], 0.4), side < 0);
+    });
   };
+
+  /* Something of known size, so the machine has a scale.
+   *
+   * A tractor alone in an empty field could be any size at all. A 1.75 m
+   * figure beside it is the cheapest way to say how big it really is, and the
+   * whole point of this catalog is that the sizes are real. */
+  function buildScaleFigure(mb, x, y, tilt) {
+    var o = [x, y], skin = [0.76, 0.62, 0.50], cloth = [0.24, 0.30, 0.42];
+    mb.box(o, 0, tilt, 0, 0.09, 0, 0.16, 0.13, 0.86, cloth);
+    mb.box(o, 0, tilt, 0, -0.09, 0, 0.16, 0.13, 0.86, cloth);
+    mb.box(o, 0, tilt, 0, 0, 0.86, 0.24, 0.42, 0.56, cloth);
+    mb.box(o, 0, tilt, 0, 0, 1.42, 0.2, 0.2, 0.24, skin);
+    mb.box(o, 0, tilt, 0, 0, 1.66, 0.24, 0.26, 0.06, [0.30, 0.34, 0.30]);
+  }
 
   /* ---------------- the machine ---------------- */
 
@@ -494,9 +528,20 @@
 
   Scene.prototype.applyPreset = function (mode) {
     this.mode = mode;
-    if (mode === "chase") { this.yaw = 0.0; this.pitch = 0.30; this.distance = 22; }
-    if (mode === "side") { this.yaw = Math.PI / 2; this.pitch = 0.08; this.distance = 32; }
-    if (mode === "top") { this.yaw = 0.0; this.pitch = 1.40; this.distance = 46; }
+    // Framing follows the machine's size until the visitor zooms, at which
+    // point their choice wins. A 21 m cultivator and a 1.5 m mower cannot
+    // share one camera distance.
+    this.autoFit = true;
+    if (mode === "chase") { this.yaw = 0.0; this.pitch = 0.30; this.baseDistance = 20; }
+    if (mode === "side") { this.yaw = Math.PI / 2; this.pitch = 0.08; this.baseDistance = 26; }
+    if (mode === "top") { this.yaw = 0.0; this.pitch = 1.40; this.baseDistance = 34; }
+    this.distance = this.baseDistance;
+  };
+
+  Scene.prototype.frame = function (span) {
+    if (!this.autoFit) { return; }
+    // Enough to hold the machine's longest dimension with room around it.
+    this.distance = Math.max(this.baseDistance || 20, span * 1.55 + 8);
   };
 
   Scene.prototype.eyeFor = function (target) {
@@ -661,6 +706,16 @@
         buildSwath(swathMb, s, frame, tilt, im.hitch_distance.value,
           im.implement_wheelbase.value, im.working_width.value / 2);
       }
+
+      // A figure of known height, placed clear of the machine on the upslope
+      // side so it never sits inside the implement.
+      var span = Math.max(g.wheelbase.value * 2.2,
+        im ? im.working_width.value : 0,
+        im ? (im.hitch_distance.value + im.implement_wheelbase.value +
+              g.wheelbase.value * 1.6) : 0);
+      buildScaleFigure(machine, pose.x + g.wheelbase.value * 1.4,
+        pose.y + span * 0.5 + 2.2, tilt);
+      scene.frame(span);
 
       var back = im ? (im.hitch_distance.value + im.implement_wheelbase.value) * 0.5 : 0;
       var target = place([pose.x - back * Math.cos(pose.theta),

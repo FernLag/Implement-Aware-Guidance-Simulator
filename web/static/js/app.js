@@ -111,6 +111,11 @@
         implementSel.appendChild(opt);
       });
       describeTractor();
+      if (applyUrlSettings()) {
+        describeTractor();
+        // A shared link should show its result, not an empty page.
+        form.dispatchEvent(new Event("submit", { cancelable: true }));
+      }
     })
     .catch(function () {
       formError.hidden = false;
@@ -118,15 +123,72 @@
         "The equipment catalog could not be loaded. Reload the page to try again.";
     });
 
+  function currentTractor() {
+    if (!catalogData) { return null; }
+    return catalogData.tractors.filter(function (x) {
+      return x.id === tractorSel.value;
+    })[0] || null;
+  }
+
   function describeTractor() {
-    if (!catalogData) { return; }
-    var t = catalogData.tractors.filter(function (x) { return x.id === tractorSel.value; })[0];
+    var t = currentTractor();
     if (!t) { tractorHint.textContent = ""; return; }
     tractorHint.textContent = t.manufacturer + ", " + t.years +
       ". Wheelbase " + t.wheelbase.value.toFixed(3) + " m" +
-      (t.wheelbase.assumed ? " (assumed)" : " (sourced)") + ".";
+      (t.wheelbase.assumed ? " (assumed)" : " (sourced)") +
+      ", drawbar " + (t.drawbar_power_w / 1000).toFixed(0) + " kW.";
+    markFeasibility();
   }
+
+  /* A pairing the tractor cannot pull is not a simulation worth running: the
+     model will happily produce numbers for a machine that could not move. The
+     catalog already works this out, so the picker says so. */
+  function markFeasibility() {
+    var t = currentTractor();
+    if (!t || !catalogData) { return; }
+    Array.prototype.forEach.call(implementSel.options, function (opt) {
+      if (!opt.value) { return; }
+      var i = catalogData.implements.filter(function (x) {
+        return x.id === opt.value;
+      })[0];
+      if (!i || !i.draft_power_w) { return; }
+      var over = i.draft_power_w > t.drawbar_power_w;
+      var base = opt.getAttribute("data-label") || opt.textContent;
+      opt.setAttribute("data-label", base);
+      opt.textContent = base + (over ? "  needs more power than this tractor" : "");
+    });
+    describeImplement();
+  }
+
+  function describeImplement() {
+    var t = currentTractor();
+    var hint = document.getElementById("implement-hint");
+    if (!t || !catalogData || !implementSel.value) {
+      hint.textContent = "Leave unset to measure the tractor alone.";
+      hint.classList.remove("is-warning");
+      return;
+    }
+    var i = catalogData.implements.filter(function (x) {
+      return x.id === implementSel.value;
+    })[0];
+    if (!i || !i.draft_power_w) { return; }
+    var need = i.draft_power_w / 1000, have = t.drawbar_power_w / 1000;
+    if (need > have) {
+      hint.classList.add("is-warning");
+      hint.textContent = "This pairing needs about " + need.toFixed(0) +
+        " kW at the drawbar and the " + t.name + " delivers " + have.toFixed(0) +
+        " kW. It will still simulate, because the guidance model does not care " +
+        "about draft, but no such outfit would work in a field.";
+    } else {
+      hint.classList.remove("is-warning");
+      hint.textContent = "Needs about " + need.toFixed(0) + " kW of " +
+        have.toFixed(0) + " kW available, " +
+        Math.round(100 * need / have) + " percent of the drawbar.";
+    }
+  }
+
   tractorSel.addEventListener("change", describeTractor);
+  implementSel.addEventListener("change", describeImplement);
 
   /* ---------- controller fields ---------- */
 
@@ -169,6 +231,7 @@
       };
     }
 
+    lastPayload = payload;
     fetch("/api/simulate", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -201,12 +264,28 @@
 
   function fmt(v, dp) { return (v === null || v === undefined) ? "n/a" : v.toFixed(dp === undefined ? 3 : dp); }
 
+  var lastPayload = null;
+
   function render(data) {
     var s = data.series;
     var m = data.summary;
 
     statusBox.hidden = true;
     resultsBox.hidden = false;
+
+    // A pairing no tractor in the catalog could pull still produces numbers,
+    // because the guidance model does not know about draft. Say so on the
+    // result rather than only in the picker.
+    var warn = document.getElementById("pairing-warning");
+    if (data.pairing && !data.pairing.feasible) {
+      warn.hidden = false;
+      warn.textContent = "This outfit is not physically feasible: it needs " +
+        data.pairing.required_kw + " kW at the drawbar and the tractor delivers " +
+        data.pairing.available_kw + " kW. The guidance figures below are still " +
+        "computed correctly, but no such combination would work in a field.";
+    } else {
+      warn.hidden = true;
+    }
 
     var lines = [{ key: "cross_track", label: "Tractor cross-track error", colour: COLOURS.tractor, dash: null }];
     if (s.implement_cross_track) {
@@ -380,6 +459,86 @@
       return '<dl class="metric ' + c.cls + '"><dt>' + c.label + "</dt><dd>" + c.value +
         '<span class="metric-note">' + c.note + "</span></dd></dl>";
     }).join("");
+  }
+
+  /* ---------- export and sharing ---------- */
+
+  function currentPayload() { return lastPayload; }
+
+  function download(name, text) {
+    var blob = new Blob([text], { type: "text/csv" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  var shareNote = document.getElementById("share-note");
+
+  document.getElementById("download-csv").addEventListener("click", function () {
+    var payload = currentPayload();
+    if (!payload) { return; }
+    shareNote.textContent = "Preparing the file.";
+    fetch("/api/simulate.csv", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.ok ? r.text() : Promise.reject(); })
+      .then(function (text) {
+        download("guidance-run.csv", text);
+        shareNote.textContent = "Downloaded.";
+      })
+      .catch(function () { shareNote.textContent = "The file could not be prepared."; });
+  });
+
+  document.getElementById("copy-link").addEventListener("click", function () {
+    var payload = currentPayload();
+    if (!payload) { return; }
+    var params = new URLSearchParams();
+    Object.keys(payload).forEach(function (k) {
+      if (payload[k] === null || typeof payload[k] === "object") { return; }
+      params.set(k, String(payload[k]));
+    });
+    var url = window.location.origin + window.location.pathname + "?" + params.toString();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function () {
+        shareNote.textContent = "Link copied.";
+      }, function () {
+        shareNote.textContent = url;
+      });
+    } else {
+      shareNote.textContent = url;
+    }
+    window.history.replaceState(null, "", "?" + params.toString());
+  });
+
+  /* Settings arriving in the address bar, so a shared link opens the same run. */
+  function applyUrlSettings() {
+    var params = new URLSearchParams(window.location.search);
+    if (!params.toString()) { return false; }
+    [["speed", "speed"], ["slope_deg", "slope_deg"], ["slip", "slip"],
+     ["initial_offset", "initial_offset"], ["lookahead_gain", "lookahead_gain"],
+     ["stanley_gain", "stanley_gain"]].forEach(function (pair) {
+      var v = params.get(pair[0]);
+      var el = document.getElementById(pair[1]);
+      if (v !== null && el) { el.value = v; }
+    });
+    if (params.get("tractor")) { tractorSel.value = params.get("tractor"); }
+    if (params.get("implement")) { implementSel.value = params.get("implement"); }
+    var controller = params.get("controller");
+    if (controller) {
+      var radio = form.querySelector('input[name="controller"][value="' + controller + '"]');
+      if (radio) { radio.checked = true; radio.dispatchEvent(new Event("change")); }
+    }
+    if (params.get("actuator") !== null) {
+      document.getElementById("actuator").checked = params.get("actuator") === "true";
+    }
+    return true;
   }
 
   /* ---------- 3D playback ---------- */
@@ -605,7 +764,8 @@
     });
     canvas.addEventListener("wheel", function (ev) {
       ev.preventDefault();
-      scene.distance = Math.max(6, Math.min(120, scene.distance + ev.deltaY * 0.04));
+      scene.autoFit = false;
+      scene.distance = Math.max(6, Math.min(200, scene.distance + ev.deltaY * 0.05));
       drawFrame(frame);
     }, { passive: false });
 

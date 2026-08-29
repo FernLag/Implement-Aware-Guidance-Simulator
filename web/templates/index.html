@@ -168,6 +168,16 @@
         </div>
 
         <div id="results" hidden>
+          <div class="form-error" id="pairing-warning" role="alert" hidden></div>
+
+          <div class="result-actions">
+            <button type="button" class="btn btn-quiet btn-sm" id="download-csv">
+              Download this run as CSV</button>
+            <button type="button" class="btn btn-quiet btn-sm" id="copy-link">
+              Copy a link to these settings</button>
+            <span class="hint" id="share-note" role="status" aria-live="polite"></span>
+          </div>
+
           <figure class="chart-card view3d">
             <figcaption id="scene-caption">The machine on the ground</figcaption>
             <canvas id="scene" class="scene-canvas" role="img"

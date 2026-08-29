@@ -200,6 +200,12 @@ edge error on the same axes. Results include skip between adjacent passes as a
 percentage of working width, so the output carries an agronomic unit and not
 only a control one.
 
+The picker warns when a tractor cannot pull the implement you chose. The
+guidance model has no notion of draft, so it will happily produce numbers for
+an outfit that could not move, and the catalog's feasibility check is now
+surfaced rather than sitting unused. Every run can be downloaded as CSV, and
+the settings can be shared as a link that reopens the same run.
+
 A **3D view** plays the pass back with the machine on tilted ground, the hitch
 articulating, and the worked swath painted behind it, which makes the implement
 lag visible in a way a line chart does not. It is drawn by a hand written WebGL
@@ -214,9 +220,13 @@ The view draws a curved bonnet, a cab with posts and glass, an exhaust stack,
 fenders, front weights, tread lugs and rims on every wheel, and tools along the
 implement bar chosen by its draft class: discs for a harrow, row units for a
 planter, tines for a cultivator, modules for a laser weeder. On the ground it
-lays down tyre tracks, the worked swath, and the boundary lines where the two
-neighbouring passes should meet, so skip and overlap are visible directly
-rather than only as a number.
+lays down the worked swath and the boundary lines where the two neighbouring
+passes should meet, so skip and overlap are visible directly rather than only
+as a number. Wheels turn with distance travelled, and turn faster than the
+ground goes by in proportion to slip, which is the one place the model's travel
+reduction can be seen rather than read. A 1.75 m figure stands beside the
+machine, because a tractor alone in an empty field could be any size and the
+whole point of the catalog is that these sizes are real.
 
 **Real fields, driving the model.** Enter a latitude and longitude in the
 United States and the simulator reads the ground there from USGS 3DEP

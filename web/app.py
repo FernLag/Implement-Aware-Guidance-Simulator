@@ -84,7 +84,7 @@ def create_app(settings: Settings | None = None) -> Flask:
         if request.endpoint == "static":
             return None
         scope = "api" if request.path.startswith("/api/") else "page"
-        cost = 4.0 if request.path == "/api/simulate" else 1.0
+        cost = 4.0 if request.path.startswith("/api/simulate") else 1.0
         if request.path == "/api/field-image":
             # One image replaces nine tiles, so it is worth a little more.
             scope, cost = "tile", 1.5
@@ -186,6 +186,55 @@ def create_app(settings: Settings | None = None) -> Flask:
             return jsonify(run_simulation(req, settings.max_simulation_steps))
         except SimulationError as exc:
             return jsonify({"error": "cannot_simulate", "message": str(exc)}), 422
+
+    @app.post("/api/simulate.csv")
+    def api_simulate_csv():
+        """The same run as /api/simulate, as a CSV anyone can open.
+
+        Served from here rather than assembled in the browser so the content
+        security policy does not have to allow blob URLs, and so the numbers in
+        the file are the ones the model produced rather than ones rounded for
+        display.
+        """
+        raw = request.get_json(silent=True)
+        if not isinstance(raw, dict):
+            return jsonify({"error": "bad_request",
+                            "message": "Body must be a JSON object."}), 400
+        try:
+            req = SimulationRequest(**raw)
+        except ValidationError as exc:
+            return jsonify({"error": "validation_failed",
+                            "fields": [{"field": ".".join(str(p) for p in e["loc"]),
+                                        "message": e["msg"]} for e in exc.errors()]}), 422
+        try:
+            result = run_simulation(req, settings.max_simulation_steps)
+        except SimulationError as exc:
+            return jsonify({"error": "cannot_simulate", "message": str(exc)}), 422
+
+        series = result["series"]
+        columns = [c for c in ("t", "x", "y", "theta", "delta", "cross_track",
+                               "implement_cross_track", "worst_edge")
+                   if c in series]
+        lines = [
+            "# Implement-Aware Guidance Simulator",
+            f"# tractor,{result['tractor']['name']}",
+            f"# implement,{result['implement']['name'] if result['implement'] else 'none'}",
+            f"# controller,{req.controller}",
+            f"# speed_m_s,{req.speed}",
+            f"# side_slope_deg,{req.slope_deg}",
+            f"# slip,{req.slip}",
+            "# Simulation output from a kinematic model, not measurements.",
+            ",".join(columns),
+        ]
+        rows = len(series["t"])
+        for i in range(rows):
+            lines.append(",".join(
+                "" if series[c][i] is None else f"{series[c][i]}" for c in columns
+            ))
+
+        response = app.response_class("\n".join(lines) + "\n", mimetype="text/csv")
+        response.headers["Content-Disposition"] = 'attachment; filename="guidance-run.csv"'
+        return response
 
     @app.get("/api/tile/<int:z>/<int:x>/<int:y>")
     def api_tile(z, x, y):

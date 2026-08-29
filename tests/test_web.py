@@ -408,3 +408,79 @@ def test_the_version_changes_only_when_the_file_does(app, tmp_path):
     first = _asset_version(app, "js/app.js")
     second = _asset_version(app, "js/app.js")
     assert first == second and first != "0"
+
+
+# --- pairing feasibility, export and sharing -------------------------------
+
+def test_the_api_reports_whether_a_pairing_is_feasible(client):
+    """A guidance model does not know about draft, so it will happily simulate
+    an outfit no tractor could pull. The catalog knows; the API now says."""
+    r = client.post("/api/simulate", json={
+        "tractor": "jd_5075e", "implement": "jd_2230fh_69ft", "duration": 10})
+    pairing = r.get_json()["pairing"]
+    assert pairing["feasible"] is False
+    assert pairing["required_kw"] > pairing["available_kw"]
+    assert pairing["reasons"]
+
+
+def test_a_sensible_pairing_is_reported_feasible(client):
+    r = client.post("/api/simulate", json={
+        "tractor": "jd_8r_410", "implement": "jd_1590_10ft", "duration": 10})
+    pairing = r.get_json()["pairing"]
+    assert pairing["feasible"] is True
+    assert 0 < pairing["utilisation"] < 1
+
+
+def test_the_catalog_carries_what_the_picker_needs_to_warn(client):
+    data = client.get("/api/catalog").get_json()
+    assert all("drawbar_power_w" in t for t in data["tractors"])
+    powered = [i for i in data["implements"] if i["draft_power_w"]]
+    assert len(powered) == len(data["implements"])
+
+
+def test_csv_export_returns_the_run(client):
+    r = client.post("/api/simulate.csv", json={
+        "tractor": "jd_6145r", "implement": "jd_1590_10ft", "duration": 10})
+    assert r.status_code == 200
+    assert r.mimetype == "text/csv"
+    assert "attachment" in r.headers["Content-Disposition"]
+
+    lines = r.get_data(as_text=True).splitlines()
+    header = [l for l in lines if not l.startswith("#")][0]
+    assert header.startswith("t,x,y,theta")
+    assert "worst_edge" in header
+    assert len(lines) > 100
+
+
+def test_csv_states_what_the_numbers_are(client):
+    """A file that leaves the building must carry the same caveat the page does."""
+    r = client.post("/api/simulate.csv", json={"tractor": "jd_6145r", "duration": 10})
+    text = r.get_data(as_text=True)
+    assert "kinematic model, not measurements" in text
+    assert "# tractor,John Deere 6145R" in text
+
+
+def test_csv_validates_like_the_json_endpoint(client):
+    assert client.post("/api/simulate.csv", json={"tractor": "jd_6145r",
+                                                 "speed": 900}).status_code == 422
+    assert client.post("/api/simulate.csv", json={"tractor": "nope"}).status_code == 422
+    assert client.post("/api/simulate.csv", data="x",
+                       content_type="text/plain").status_code == 400
+
+
+def test_csv_is_rate_limited_like_the_simulation():
+    settings = replace(load_settings(), secret_key="k", secret_key_is_ephemeral=False,
+                       rate_limit_per_minute=1, rate_limit_burst=2)
+    client = create_app(settings).test_client()
+    codes = [client.post("/api/simulate.csv",
+                         json={"tractor": "jd_6145r", "duration": 10}).status_code
+             for _ in range(4)]
+    assert 429 in codes
+
+
+def test_settings_can_be_shared_in_the_url():
+    from pathlib import Path
+    app_js = (Path(__file__).resolve().parent.parent / "web" / "static" / "js" / "app.js").read_text()
+    assert "URLSearchParams" in app_js
+    assert "applyUrlSettings" in app_js
+    assert "history.replaceState" in app_js

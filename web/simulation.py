@@ -16,7 +16,8 @@ import math
 import numpy as np
 
 from aggsim.analysis.coverage import coverage_between_passes
-from aggsim.catalog import load_catalog
+from aggsim.catalog import check_pairing, load_catalog
+from aggsim.catalog.validate import required_draft_power
 from aggsim.catalog.param import Param
 from aggsim.config import load_steering
 from aggsim.config.terrain import SlopeProfile, Terrain
@@ -76,6 +77,7 @@ def catalog_payload() -> dict:
             "mass": param(t.mass),
             "engine_power": param(t.engine_power),
             "drawbar_power": param(t.drawbar_power),
+            "drawbar_power_w": t.drawbar_power.value,
             "max_steer_angle": param(t.max_steer_angle),
         })
 
@@ -91,6 +93,13 @@ def catalog_payload() -> dict:
             "mass": param(i.mass),
             "hitch_distance": param(i.hitch_distance),
             "implement_wheelbase": param(i.implement_wheelbase),
+            # So the picker can say which pairings the tractor can actually
+            # pull, instead of letting someone run a combination no machine
+            # in the catalog could manage.
+            "draft_power_w": (
+                round(required_draft_power(i), 1)
+                if i.draft_power_per_width else None
+            ),
         })
 
     assumed = [
@@ -224,9 +233,24 @@ def run_simulation(req, max_steps: int) -> dict:
             "working_width": geometry.working_width,
         })
 
+    pairing = None
+    if implement is not None:
+        try:
+            check = check_pairing(tractor, implement)
+            pairing = {
+                "feasible": check.ok,
+                "required_kw": round(check.required_power / 1000, 1),
+                "available_kw": round(check.available_power / 1000, 1),
+                "utilisation": round(check.utilisation, 3),
+                "reasons": check.reasons,
+            }
+        except ValueError:
+            pairing = None
+
     return {
         "tractor": {"id": tractor.id, "name": tractor.name,
                     "wheelbase": tractor.wheelbase.value},
+        "pairing": pairing,
         "implement": None if implement is None else {
             "id": implement.id, "name": implement.name,
             "type": implement.type, "width": implement.working_width.value,

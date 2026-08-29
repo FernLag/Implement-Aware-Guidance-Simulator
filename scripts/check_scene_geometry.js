@@ -34,10 +34,21 @@ function check(name, ok, detail) {
   }
 }
 
+/* A stand-in for the real Scene. It must offer the same surface the renderer
+ * calls, or this file starts failing for reasons that have nothing to do with
+ * the geometry it is meant to be checking. */
+function stubScene() {
+  return {
+    autoFit: true, baseDistance: 20, distance: 20, mode: "chase",
+    frame(span) { this.lastSpan = span; },
+    draw(parts) { this.parts = parts; }
+  };
+}
+
 function capture(data, frame) {
-  let parts = null;
-  window.GuidanceScene.render({ draw: (p) => { parts = p; } }, data, frame);
-  return parts;
+  const scene = stubScene();
+  window.GuidanceScene.render(scene, data, frame);
+  return scene.parts;
 }
 
 const bare = capture(scenes.__none__, 100).machine;
