@@ -220,8 +220,10 @@ The view draws a curved bonnet, a cab with posts and glass, an exhaust stack,
 fenders, front weights, tread lugs and rims on every wheel, and tools along the
 implement bar chosen by its draft class: discs for a harrow, row units for a
 planter, tines for a cultivator, modules for a laser weeder. On the ground it
-lays down the worked swath and the boundary lines where the two neighbouring
-passes should meet, so skip and overlap are visible directly rather than only
+lays down three tracks along the ground, the guidance line, where the tractor
+actually went and where the implement centre actually went, in the same olive
+and clay the charts use. It also draws the worked swath and the boundary lines
+where the two neighbouring passes should meet, so skip and overlap are visible directly rather than only
 as a number. Wheels turn with distance travelled, and turn faster than the
 ground goes by in proportion to slip, which is the one place the model's travel
 reduction can be seen rather than read. **Scale is stated, not implied.** The ground carries a five metre grid computed
@@ -231,8 +233,9 @@ scale bar rounds to a usable figure. The labels are real SVG text over the
 canvas rather than glyphs baked into a texture, so they stay crisp at any zoom
 and a screen reader can read them.
 
-**Real fields, driving the model.** Enter a latitude and longitude in the
-United States and the simulator reads the ground there from USGS 3DEP
+**Real fields, driving the model.** Pick one of five verified cropland presets,
+spanning nearly flat Iowa corn to rolling Palouse wheat with 13.6 m of relief,
+or enter any latitude and longitude in the United States and the simulator reads the ground there from USGS 3DEP
 elevation at 1 m resolution, lays the USGS aerial photograph under the machine,
 and **runs the simulation on that ground**. Not a single slope number: the side
 slope is sampled every few metres along the guidance line, so the disturbance

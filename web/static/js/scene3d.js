@@ -114,7 +114,12 @@
     lug: [0.09, 0.08, 0.06],
     steel: [0.42, 0.39, 0.33],
     lamp: [0.96, 0.93, 0.80],
-    beacon: [0.85, 0.60, 0.16]
+    beacon: [0.85, 0.60, 0.16],
+    // The same olive and clay the charts use, so a colour means one thing
+    // everywhere in this interface.
+    guide: [0.14, 0.11, 0.08],
+    trackTractor: [0.24, 0.33, 0.16],
+    trackImplement: [0.55, 0.24, 0.09]
   };
 
   function normalise(v) {
@@ -345,12 +350,16 @@
       // the old fenders read as debris scattered round the tyre.
       [1, -1].forEach(function (side) {
         var y = side * (track / 2 - rw.width * 0.06);
-        var hwid = rw.width * 0.66, r = rAxle * 1.14, steps = 9;
+        var hwid = rw.width * 0.62, r = rAxle * 1.16, steps = 11;
         for (var fs = 0; fs < steps; fs++) {
           var a0 = Math.PI * (0.14 + 0.72 * (fs / steps));
           var a1 = Math.PI * (0.14 + 0.72 * ((fs + 1) / steps));
           function arc(ang, dy) {
-            return place([-Math.cos(ang) * r, y + dy, r * Math.sin(ang)], o, yaw, tilt);
+            // Centred on the AXLE, at height rAxle. Centring it on the ground
+            // put the hoop a whole wheel radius too low, so it cut straight
+            // through the tyre.
+            return place([-Math.cos(ang) * r, y + dy, rAxle + Math.sin(ang) * r],
+              o, yaw, tilt);
           }
           mb.quad(arc(a0, -hwid), arc(a1, -hwid), arc(a1, hwid), arc(a0, hwid), bodyLow);
         }
@@ -472,6 +481,50 @@
     var nx = -Math.sin(ti), ny = Math.cos(ti);
     return { lx: ix + nx * halfWidth, ly: iy + ny * halfWidth,
              rx: ix - nx * halfWidth, ry: iy - ny * halfWidth };
+  }
+
+  /* The three tracks the whole project is about, laid on the ground:
+     where the guidance line is, where the tractor actually went, and where the
+     implement centre actually went. Drawn as thin ribbons rather than lines,
+     because a GL line has no width you can rely on. */
+  function ribbon(mb, points, tilt, halfWidth, colour, height) {
+    for (var i = 0; i < points.length - 1; i++) {
+      var p = points[i], q = points[i + 1];
+      var dx = q[0] - p[0], dy = q[1] - p[1];
+      var len = Math.hypot(dx, dy);
+      if (len < 1e-6) { continue; }
+      var nx = -dy / len * halfWidth, ny = dx / len * halfWidth;
+      mb.quad(place([p[0] + nx, p[1] + ny, height], [0, 0], 0, tilt),
+              place([q[0] + nx, q[1] + ny, height], [0, 0], 0, tilt),
+              place([q[0] - nx, q[1] - ny, height], [0, 0], 0, tilt),
+              place([p[0] - nx, p[1] - ny, height], [0, 0], 0, tilt), colour);
+    }
+  }
+
+  function buildTracks(mb, s, upTo, tilt, im) {
+    var step = Math.max(1, Math.floor(upTo / 200));
+    var tractor = [], implement = [];
+    for (var i = Math.max(0, upTo - 2600); i <= upTo; i += step) {
+      if (s.x[i] === null) { continue; }
+      tractor.push([s.x[i], s.y[i]]);
+      if (im && s.theta_implement) {
+        var a = im.hitch_distance.value;
+        var reach = im.type === "trailed" ? im.implement_wheelbase.value : 1.15;
+        var hx = s.x[i] - a * Math.cos(s.theta[i]);
+        var hy = s.y[i] - a * Math.sin(s.theta[i]);
+        implement.push([hx - reach * Math.cos(s.theta_implement[i]),
+                        hy - reach * Math.sin(s.theta_implement[i])]);
+      }
+    }
+    // The line the operator asked for, straight down the field.
+    if (tractor.length) {
+      var x0 = tractor[0][0], x1 = tractor[tractor.length - 1][0] + 90;
+      ribbon(mb, [[x0 - 40, 0], [x1, 0]], tilt, 0.09, COL.guide, 0.055);
+    }
+    ribbon(mb, tractor, tilt, 0.11, COL.trackTractor, 0.05);
+    if (implement.length) {
+      ribbon(mb, implement, tilt, 0.11, COL.trackImplement, 0.05);
+    }
   }
 
   function buildSwath(mb, s, upTo, tilt, a, b, halfWidth) {
@@ -793,6 +846,7 @@
         buildSwath(swathMb, s, frame, tilt, im.hitch_distance.value,
           im.implement_wheelbase.value, im.working_width.value / 2);
       }
+      buildTracks(swathMb, s, frame, tilt, im);
 
       var span = Math.max(g.wheelbase.value * 2.2,
         im ? im.working_width.value : 0,

@@ -522,3 +522,30 @@ def test_the_label_follows_the_nearest_figure():
     src = _scene_source()
     assert "var nearest = null" in src
     assert "Math.abs(f[0] - pose.x)" in src
+
+
+def test_the_fender_arc_is_centred_on_the_axle():
+    """Centred on the ground it sat a whole wheel radius too low and cut
+    straight through the tyre."""
+    src = _scene_source()
+    start = src.index("A continuous curved strip")
+    fender = src[start:start + 900]
+    assert "rAxle + Math.sin(ang) * r" in fender
+    assert "r * Math.sin(ang)]" not in fender
+
+
+def test_the_three_paths_are_drawn_on_the_ground():
+    """The guidance line, where the tractor went and where the implement went.
+    The divergence is the whole subject, so it should be visible in the field
+    and not only on a chart."""
+    src = _scene_source()
+    assert "function buildTracks" in src
+    assert "trackTractor" in src and "trackImplement" in src and "guide" in src
+
+
+def test_track_colours_match_the_charts():
+    """Olive is the tractor and clay is the implement everywhere else, so a
+    colour must not mean something different in the 3D view."""
+    src = _scene_source()
+    assert "trackTractor: [0.24, 0.33, 0.16]" in src
+    assert "trackImplement: [0.55, 0.24, 0.09]" in src

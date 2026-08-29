@@ -38,7 +38,7 @@
           <text x="300" y="168" fill="#A35A32">implement edge</text>
         </g>
         <path d="M404 113 V148" stroke="#33291D" stroke-width="1"/>
-        <text x="356" y="196" font-size="11" font-family="Georgia, serif" fill="#33291D">the gap that matters</text>
+        <text x="398" y="196" font-size="11" font-family="Georgia, serif" fill="#33291D" text-anchor="end">the gap that matters</text>
       </svg>
       <figcaption>A ten degree side slope. Both tracks settle, but not in the
       same place, and only one of them is what the crop sees.</figcaption>
@@ -102,9 +102,12 @@
           <p class="hint">The ground under the machine is plain soil until you
           load a field here. Reading a field fetches USGS elevation and puts the
           real aerial photograph beneath it. United States coverage only.</p>
+          <p class="hint">The presets below are real cropland, checked against
+          the imagery. Arbitrary coordinates often land on a town or a road,
+          and the machine then appears to be driving across rooftops.</p>
           <p class="field">
             <label for="latlon">Latitude, longitude</label>
-            <input type="text" id="latlon" name="latlon" value="42.0300, -93.6500"
+            <input type="text" id="latlon" name="latlon" value="42.4200, -93.8600"
                    inputmode="decimal" aria-describedby="latlon-error latlon-hint">
             <span class="hint" id="latlon-hint">Or pick one below.</span>
             <span class="error" id="latlon-error" role="alert"></span>
@@ -114,9 +117,21 @@
             <input type="number" id="heading" name="heading" value="90" min="0" max="359" step="1">
           </p>
           <div class="preset-row">
-            <button type="button" class="btn btn-quiet btn-sm" data-place="42.0300,-93.6500">Iowa</button>
-            <button type="button" class="btn btn-quiet btn-sm" data-place="46.7300,-117.1800">Palouse</button>
-            <button type="button" class="btn btn-quiet btn-sm" data-place="38.5000,-98.0000">Kansas</button>
+            <button type="button" class="btn btn-quiet btn-sm"
+              data-place="42.4200,-93.8600" data-heading="90"
+              title="Row crop, nearly flat">Iowa corn</button>
+            <button type="button" class="btn btn-quiet btn-sm"
+              data-place="40.3100,-88.7400" data-heading="90"
+              title="Row crop, gently sloping">Illinois</button>
+            <button type="button" class="btn btn-quiet btn-sm"
+              data-place="37.8200,-100.5400" data-heading="90"
+              title="Centre pivot, mild slope">Kansas pivot</button>
+            <button type="button" class="btn btn-quiet btn-sm"
+              data-place="41.2400,-101.0500" data-heading="90"
+              title="Centre pivot, ten metres of relief">Nebraska</button>
+            <button type="button" class="btn btn-quiet btn-sm"
+              data-place="46.8500,-117.3500" data-heading="0"
+              title="Rolling wheat, the steepest here">Palouse wheat</button>
           </div>
           <button type="button" class="btn btn-quiet btn-block" id="read-field">
             <span class="btn-label">Read slope from this field</span>

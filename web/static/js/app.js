@@ -754,6 +754,10 @@
       btn.addEventListener("click", function () {
         document.getElementById("latlon").value =
           btn.getAttribute("data-place").replace(",", ", ");
+        // Each preset comes with the heading that runs along its field, since
+        // driving across a slope and driving up it are different problems.
+        var heading = btn.getAttribute("data-heading");
+        if (heading !== null) { document.getElementById("heading").value = heading; }
       });
     });
 

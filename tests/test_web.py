@@ -484,3 +484,27 @@ def test_settings_can_be_shared_in_the_url():
     assert "URLSearchParams" in app_js
     assert "applyUrlSettings" in app_js
     assert "history.replaceState" in app_js
+
+
+def test_field_presets_are_verified_cropland(client):
+    """An arbitrary coordinate often lands on a town. The old Iowa preset was
+    in Ames, so the machine appeared to drive across rooftops."""
+    html = client.get("/").get_data(as_text=True)
+    assert "42.0300,-93.6500" not in html, "the preset in the middle of a town is back"
+    for place in ["42.4200,-93.8600", "40.3100,-88.7400", "37.8200,-100.5400",
+                  "41.2400,-101.0500", "46.8500,-117.3500"]:
+        assert place in html, place
+    assert "often land on a town or a road" in html
+
+
+def test_presets_carry_the_heading_that_suits_their_field(client):
+    """Driving across a slope and driving up it are different problems, so a
+    preset that supplies a location should supply the line direction too."""
+    html = client.get("/").get_data(as_text=True)
+    assert 'data-heading="0"' in html and 'data-heading="90"' in html
+
+
+def test_the_hero_label_is_not_clipped(client):
+    """It ran off the right edge of the diagram's viewBox."""
+    html = client.get("/").get_data(as_text=True)
+    assert 'text-anchor="end">the gap that matters' in html
