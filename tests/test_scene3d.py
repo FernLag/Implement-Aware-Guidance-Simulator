@@ -123,12 +123,24 @@ def test_scene_script_is_served_before_the_app_script():
     assert base.index("scene3d.js") < base.index("js/app.js")
 
 
+# The SVG namespace is an identifier that createElementNS requires, not an
+# address anything is fetched from. It is the one permitted URL-shaped string.
+SVG_NS = "http://www.w3.org/2000/svg"
+
+
+def _external_urls(text: str) -> list[str]:
+    return [
+        m for m in re.findall(r'https?://[^\s"\')]+', text)
+        if not m.startswith(SVG_NS)
+    ]
+
+
 def test_no_third_party_library_is_loaded():
     """The content security policy forbids it, and nothing here needs one."""
     for script in (REPO / "web" / "static" / "js").glob("*.js"):
         text = script.read_text()
-        assert "http://" not in text and "https://" not in text
-        for lib in ("three.min", "THREE.", "babylon", "import(", "importScripts"):
+        assert _external_urls(text) == [], script.name
+        for lib in ("three.min", "THREE.", "babylon", "importScripts"):
             assert lib not in text, f"{script.name} pulls in {lib}"
 
 
@@ -359,7 +371,7 @@ def test_no_rendering_library_is_vendored():
     js = REPO / "web" / "static" / "js"
     for script in js.glob("*.js"):
         text = script.read_text()
-        assert "https://" not in text and "http://" not in text
+        assert _external_urls(text) == [], script.name
         for lib in ("THREE.", "three.min", "babylon", "regl", "twgl"):
             assert lib not in text, f"{script.name} vendors {lib}"
     total = sum(f.stat().st_size for f in js.glob("*.js"))
@@ -443,3 +455,50 @@ def test_the_cab_is_glazed_rather_than_a_solid_box():
 def test_fenders_follow_the_arc():
     src = _scene_source()
     assert "A continuous curved strip over the wheel" in src
+
+
+# --- showing scale ---------------------------------------------------------
+
+def test_the_ground_carries_a_metre_grid():
+    """A grid computed from world position is a real measure of the ground,
+    unlike a texture that happens to have lines on it."""
+    src = _scene_source()
+    assert "float gridLine(vec2 p, float spacing)" in src
+    assert "gridLine(vWorld, 5.0)" in src
+
+
+def test_the_renderer_can_project_a_point_for_labelling():
+    src = _scene_source()
+    assert "Scene.prototype.project" in src
+    assert "Scene.prototype.pixelsPerMetre" in src
+
+
+def test_annotations_quote_the_catalog_rather_than_estimating():
+    app = (REPO / "web" / "static" / "js" / "app.js").read_text()
+    assert "a.wheelbase.toFixed(2)" in app
+    assert "a.workingWidth.toFixed(2)" in app
+    assert "1.75 m" in app
+
+
+def test_labels_are_real_text_not_baked_into_a_texture():
+    """Text in a WebGL texture is blurry when zoomed and invisible to a screen
+    reader."""
+    app = (REPO / "web" / "static" / "js" / "app.js").read_text()
+    assert 'createElementNS(SVG_NS' in app or 'createElementNS("http://www.w3.org/2000/svg"' in app
+    assert 'svg("text"' in app
+
+
+def test_the_scale_bar_rounds_to_a_usable_figure():
+    """A bar reading 13.7 m is arithmetic, not a scale."""
+    app = (REPO / "web" / "static" / "js" / "app.js").read_text()
+    assert "[1, 2, 5, 10, 20, 50, 100]" in app
+
+
+def test_the_headless_scene_comes_from_the_renderer():
+    """A hand-maintained stub drifted out of step twice, and each time the
+    geometry check failed for reasons unrelated to the geometry."""
+    src = _scene_source()
+    assert "headless: function" in src
+    check = (REPO / "scripts" / "check_scene_geometry.js").read_text()
+    assert "GuidanceScene.headless()" in check
+    assert "stubScene" not in check

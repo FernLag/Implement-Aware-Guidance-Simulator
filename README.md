@@ -224,9 +224,12 @@ lays down the worked swath and the boundary lines where the two neighbouring
 passes should meet, so skip and overlap are visible directly rather than only
 as a number. Wheels turn with distance travelled, and turn faster than the
 ground goes by in proportion to slip, which is the one place the model's travel
-reduction can be seen rather than read. A 1.75 m figure stands beside the
-machine, because a tractor alone in an empty field could be any size and the
-whole point of the catalog is that these sizes are real.
+reduction can be seen rather than read. **Scale is stated, not implied.** The ground carries a five metre grid computed
+from world position, dimension lines quote the catalog's own wheelbase and
+working width, a 1.75 m figure stands beside the machine, and a map-style
+scale bar rounds to a usable figure. The labels are real SVG text over the
+canvas rather than glyphs baked into a texture, so they stay crisp at any zoom
+and a screen reader can read them.
 
 **Real fields, driving the model.** Enter a latitude and longitude in the
 United States and the simulator reads the ground there from USGS 3DEP

@@ -34,19 +34,10 @@ function check(name, ok, detail) {
   }
 }
 
-/* A stand-in for the real Scene. It must offer the same surface the renderer
- * calls, or this file starts failing for reasons that have nothing to do with
- * the geometry it is meant to be checking. */
-function stubScene() {
-  return {
-    autoFit: true, baseDistance: 20, distance: 20, mode: "chase",
-    frame(span) { this.lastSpan = span; },
-    draw(parts) { this.parts = parts; }
-  };
-}
-
+/* The headless scene comes from the renderer itself, so it cannot drift out of
+ * step with what render() calls. A stub maintained here did, twice. */
 function capture(data, frame) {
-  const scene = stubScene();
+  const scene = window.GuidanceScene.headless();
   window.GuidanceScene.render(scene, data, frame);
   return scene.parts;
 }

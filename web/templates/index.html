@@ -180,8 +180,11 @@
 
           <figure class="chart-card view3d">
             <figcaption id="scene-caption">The machine on the ground</figcaption>
-            <canvas id="scene" class="scene-canvas" role="img"
-                    aria-labelledby="scene-caption" aria-describedby="scene-alt"></canvas>
+            <div class="scene-stage">
+              <canvas id="scene" class="scene-canvas" role="img"
+                      aria-labelledby="scene-caption" aria-describedby="scene-alt"></canvas>
+              <svg class="scene-overlay" id="scene-overlay" aria-hidden="true"></svg>
+            </div>
             <p class="visually-hidden" id="scene-alt" aria-live="off"></p>
 
             <div class="scene-controls">
@@ -193,6 +196,11 @@
               </label>
               <span class="scene-clock" id="scene-clock" role="status" aria-live="polite">0.0 s</span>
             </div>
+
+            <p class="field checkbox scene-toggle">
+              <label><input type="checkbox" id="show_scale" checked>
+              Show dimensions and a scale bar</label>
+            </p>
 
             <div class="scene-views" role="group" aria-label="Camera position">
               <button type="button" class="btn btn-quiet btn-sm" data-view="chase" aria-pressed="true">Behind</button>

@@ -57,8 +57,9 @@
     "attribute vec3 aPos; attribute vec3 aNormal; attribute vec2 aUV;",
     "uniform mat4 uViewProj;",
     "varying vec3 vNormal; varying vec2 vUV; varying float vDepth;",
+    "varying vec2 vWorld;",
     "void main() {",
-    "  vNormal = aNormal; vUV = aUV;",
+    "  vNormal = aNormal; vUV = aUV; vWorld = aPos.xy;",
     "  vec4 clip = uViewProj * vec4(aPos, 1.0);",
     "  vDepth = clip.w;",
     "  gl_Position = clip;",
@@ -69,10 +70,22 @@
     "precision mediump float;",
     "uniform sampler2D uTex; uniform vec3 uLight; uniform vec3 uFog;",
     "uniform float uFogStart; uniform vec3 uTint; uniform float uUseTex;",
+    "uniform float uGrid;",
     "varying vec3 vNormal; varying vec2 vUV; varying float vDepth;",
+    "varying vec2 vWorld;",
+    // A five metre grid, drawn from world position so it is a real measure of
+    // the ground rather than a texture that happens to have lines on it. The
+    // line fades with distance so it never turns the far field into moire.
+    "float gridLine(vec2 p, float spacing) {",
+    "  vec2 g = abs(fract(p / spacing - 0.5) - 0.5) * spacing;",
+    "  float d = min(g.x, g.y);",
+    "  return 1.0 - smoothstep(0.0, 0.16, d);",
+    "}",
     "void main() {",
     "  vec3 n = normalize(vNormal);",
     "  vec3 albedo = mix(uTint, texture2D(uTex, vUV).rgb, uUseTex);",
+    "  float g = gridLine(vWorld, 5.0) * uGrid * (1.0 - clamp(vDepth / 120.0, 0.0, 0.85));",
+    "  albedo = mix(albedo, vec3(0.98, 0.96, 0.90), g * 0.30);",
     "  float lambert = max(dot(n, uLight), 0.0);",
     "  vec3 base = albedo * (0.55 + 0.45 * lambert);",
     "  float fog = clamp((vDepth - uFogStart) / 190.0, 0.0, 0.6);",
@@ -578,6 +591,34 @@
     });
   }
 
+  /* World point to CSS pixels, for the annotation overlay.
+   *
+   * Text in WebGL means baking glyphs into textures. Text in the DOM is crisp
+   * at any zoom, selectable, and readable by a screen reader, so the labels
+   * live in an SVG on top and only need to know where things landed. */
+  Scene.prototype.project = function (p) {
+    if (!this.lastViewProj) { return null; }
+    var m = this.lastViewProj;
+    var x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12];
+    var y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
+    var w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
+    if (w <= 0.001) { return null; }
+    return {
+      x: (x / w * 0.5 + 0.5) * this.cssWidth,
+      y: (0.5 - y / w * 0.5) * this.cssHeight,
+      depth: w
+    };
+  };
+
+  /* How many pixels a metre spans at the point being looked at, which is what
+     a scale bar needs. */
+  Scene.prototype.pixelsPerMetre = function (target) {
+    var a = this.project(target);
+    var b = this.project([target[0], target[1] + 1, target[2]]);
+    if (!a || !b) { return null; }
+    return Math.hypot(b.x - a.x, b.y - a.y);
+  };
+
   Scene.prototype.draw = function (parts, target, tilt) {
     var gl = this.gl;
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -596,6 +637,9 @@
       this.canvas.width / this.canvas.height, 0.4, 900);
     var view = window.GLMath.lookAt(window.GLMath.create(), eye, target, [0, 0, 1]);
     var viewProj = window.GLMath.multiply(window.GLMath.create(), proj, view);
+    this.lastViewProj = viewProj;
+    this.cssWidth = w;
+    this.cssHeight = h;
 
     // Ground.
     gl.useProgram(this.ground);
@@ -606,6 +650,7 @@
     gl.uniform3fv(gl.getUniformLocation(this.ground, "uTint"), COL.soil);
     var textured = this.useTexture(parts.texture);
     gl.uniform1f(gl.getUniformLocation(this.ground, "uUseTex"), textured ? 1.0 : 0.0);
+    gl.uniform1f(gl.getUniformLocation(this.ground, "uGrid"), this.showGrid === false ? 0.0 : 1.0);
     if (textured) {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.texture);
@@ -672,6 +717,30 @@
   window.GuidanceScene = {
     create: function (canvas) { return new Scene(canvas); },
 
+    /* A scene that records instead of drawing, for checking the geometry
+     * without a browser.
+     *
+     * Defined here, beside the renderer, rather than hand-written in the
+     * checking script. A stub maintained over there drifted out of step with
+     * what render() actually calls twice, and each time the check failed for
+     * reasons that had nothing to do with the geometry it exists to test.
+     */
+    headless: function (width, height) {
+      var scene = Object.create(Scene.prototype);
+      scene.cssWidth = width || 960;
+      scene.cssHeight = height || 540;
+      scene.autoFit = true;
+      scene.applyPreset("chase");
+      scene.draw = function (parts, target, tilt) {
+        this.parts = parts;
+        this.target = target;
+        this.tilt = tilt;
+      };
+      // Projection needs a matrix that only a real draw produces.
+      scene.project = function () { return null; };
+      return scene;
+    },
+
     render: function (scene, data, frame, terrain) {
       var s = data.series, g = data.scene.machine;
       var tilt = (data.scene.slope_deg || 0) * Math.PI / 180 * (data.scene.slope_sign || 1);
@@ -721,6 +790,9 @@
       var target = place([pose.x - back * Math.cos(pose.theta),
                           pose.y - back * Math.sin(pose.theta), 1.4], [0, 0], 0, tilt);
 
+      var figureAt = [pose.x + g.wheelbase.value * 1.4,
+                      pose.y + span * 0.5 + 2.2];
+
       scene.draw({
         machine: new Float32Array(machine.data),
         ground: new Float32Array(groundMb.data),
@@ -729,6 +801,31 @@
         texture: terrain && terrain.patch ? terrain.patch.image : null
       }, target, tilt);
 
+      // Anchors for the annotation overlay, in world coordinates, so the
+      // labels quote the catalog's own dimensions rather than guesses.
+      var anchors = {
+        rearAxle: place([0, 0, 0.3], [pose.x, pose.y], pose.theta, tilt),
+        frontAxle: place([g.wheelbase.value, 0, 0.3], [pose.x, pose.y], pose.theta, tilt),
+        wheelbase: g.wheelbase.value,
+        figure: place([0, 0, 1.75], figureAt, 0, tilt),
+        figureBase: place([0, 0, 0], figureAt, 0, tilt),
+        target: target,
+        pixelsPerMetre: scene.pixelsPerMetre(target)
+      };
+      if (im) {
+        var iw = im.working_width.value / 2;
+        var nxx = -Math.sin(pose.thetaImplement), nyy = Math.cos(pose.thetaImplement);
+        var ax = pose.x - im.hitch_distance.value * Math.cos(pose.theta);
+        var ay = pose.y - im.hitch_distance.value * Math.sin(pose.theta);
+        var reach = im.type === "trailed" ? im.implement_wheelbase.value : MOUNTED_LINKAGE_M;
+        var cxx = ax - reach * Math.cos(pose.thetaImplement);
+        var cyy = ay - reach * Math.sin(pose.thetaImplement);
+        anchors.edgeLeft = place([cxx + nxx * iw, cyy + nyy * iw, 1.1], [0, 0], 0, tilt);
+        anchors.edgeRight = place([cxx - nxx * iw, cyy - nyy * iw, 1.1], [0, 0], 0, tilt);
+        anchors.workingWidth = im.working_width.value;
+      }
+
+      pose.anchors = anchors;
       return pose;
     }
   };

@@ -541,6 +541,104 @@
     return true;
   }
 
+  /* ---------- scale annotations ----------
+     Dimension lines and a scale bar, drawn as SVG on top of the canvas.
+
+     Text baked into a WebGL texture is blurry when zoomed and invisible to a
+     screen reader. Real SVG text is crisp at any size and quotes the catalog's
+     own figures, which is the point: this tool's whole claim is that the
+     dimensions are real, so it should be able to say what they are. */
+
+  var overlay = document.getElementById("scene-overlay");
+  var showScale = document.getElementById("show_scale");
+  if (showScale) {
+    showScale.addEventListener("change", function () {
+      if (scene) { scene.showGrid = showScale.checked; }
+      drawFrame(frame);
+    });
+  }
+
+  function svg(tag, attrs, text) {
+    var el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    Object.keys(attrs).forEach(function (k) { el.setAttribute(k, attrs[k]); });
+    if (text !== undefined) { el.textContent = text; }
+    return el;
+  }
+
+  function dimension(parent, a, b, label, cls) {
+    if (!a || !b) { return; }
+    var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    var dx = b.x - a.x, dy = b.y - a.y;
+    var len = Math.hypot(dx, dy);
+    if (len < 26) { return; }
+    var nx = -dy / len * 6, ny = dx / len * 6;
+
+    parent.appendChild(svg("path", {
+      class: "dim " + (cls || ""),
+      d: "M" + (a.x + nx) + " " + (a.y + ny) + "L" + (a.x - nx) + " " + (a.y - ny) +
+         "M" + a.x + " " + a.y + "L" + b.x + " " + b.y +
+         "M" + (b.x + nx) + " " + (b.y + ny) + "L" + (b.x - nx) + " " + (b.y - ny)
+    }));
+    parent.appendChild(svg("text", {
+      x: mx, y: my - 8, "text-anchor": "middle"
+    }, label));
+  }
+
+  function drawAnnotations(pose) {
+    if (!overlay) { return; }
+    overlay.innerHTML = "";
+    if (!pose || !pose.anchors || (showScale && !showScale.checked)) { return; }
+
+    var a = pose.anchors;
+    var w = document.getElementById("scene").clientWidth;
+    var h = document.getElementById("scene").clientHeight;
+    overlay.setAttribute("viewBox", "0 0 " + w + " " + h);
+
+    dimension(overlay, scene.project(a.rearAxle), scene.project(a.frontAxle),
+      a.wheelbase.toFixed(2) + " m wheelbase");
+
+    if (a.workingWidth) {
+      dimension(overlay, scene.project(a.edgeLeft), scene.project(a.edgeRight),
+        a.workingWidth.toFixed(2) + " m working width", "dim-implement");
+    }
+
+    var head = scene.project(a.figure), feet = scene.project(a.figureBase);
+    if (head && feet && Math.abs(feet.y - head.y) > 14) {
+      overlay.appendChild(svg("path", {
+        class: "dim",
+        d: "M" + (head.x + 14) + " " + head.y + "L" + (feet.x + 14) + " " + feet.y
+      }));
+      overlay.appendChild(svg("text", {
+        x: head.x + 20, y: (head.y + feet.y) / 2, "text-anchor": "start"
+      }, "1.75 m"));
+    }
+
+    // A scale bar, sized at the depth being looked at, rounded to a figure a
+    // person can actually use rather than whatever the arithmetic produced.
+    var ppm = a.pixelsPerMetre;
+    if (ppm && ppm > 0.4) {
+      var candidates = [1, 2, 5, 10, 20, 50, 100];
+      var metres = candidates[candidates.length - 1];
+      for (var i = 0; i < candidates.length; i++) {
+        if (candidates[i] * ppm > w * 0.16) { metres = candidates[i]; break; }
+      }
+      var px = metres * ppm;
+      var x0 = 18, y0 = h - 22;
+      overlay.appendChild(svg("path", {
+        class: "bar",
+        d: "M" + x0 + " " + (y0 - 6) + "L" + x0 + " " + (y0 + 6) +
+           "M" + x0 + " " + y0 + "L" + (x0 + px) + " " + y0 +
+           "M" + (x0 + px) + " " + (y0 - 6) + "L" + (x0 + px) + " " + (y0 + 6)
+      }));
+      overlay.appendChild(svg("text", {
+        x: x0 + px / 2, y: y0 - 10, "text-anchor": "middle"
+      }, metres + " m"));
+      overlay.appendChild(svg("text", {
+        x: x0, y: y0 + 20, "text-anchor": "start"
+      }, "grid squares are 5 m"));
+    }
+  }
+
   /* ---------- 3D playback ---------- */
 
   var scene = null, sceneData = null, frame = 0, playing = false, rafId = null;
@@ -612,7 +710,8 @@
     if (!scene || !sceneData) { return; }
     var s = sceneData.series;
     frame = Math.max(0, Math.min(i, s.t.length - 1));
-    window.GuidanceScene.render(scene, sceneData, frame, terrain);
+    var pose = window.GuidanceScene.render(scene, sceneData, frame, terrain);
+    drawAnnotations(pose);
 
     document.getElementById("scene-clock").textContent = fmt(s.t[frame], 1) + " s";
     document.getElementById("scene-time").value = String(frame);
