@@ -288,3 +288,29 @@ def test_appearance_cannot_change_a_result():
         appearance.LIVERY["John Deere"] = original
     assert a["summary"] == b["summary"]
     assert a["series"]["cross_track"] == b["series"]["cross_track"]
+
+
+def test_the_base_plane_is_not_drawn_over_the_photograph():
+    """A regression guard for a bug that made the imagery look as though it
+    had never loaded.
+
+    The aerial photograph is painted as a background pass before the
+    depth-sorted faces. An opaque 800 m base plane was being pushed into that
+    sorted list, so it drew straight over the photograph. The base plane must
+    only enter the sorted list when there is no imagery; with imagery it is
+    drawn inside the background pass, underneath.
+    """
+    src = _scene_source()
+    build = src[src.index("function buildGround"):src.index("function edgePair")]
+    assert "if (!textured) {" in build, "the base plane is unconditional again"
+
+    ground = src[src.index("Scene.prototype.drawGround"):src.index("Scene.prototype.draw =")]
+    assert "under the photograph rather than over it" in ground
+    assert "screen(cx - 400, -400)" in ground, "no far field beneath the imagery"
+
+
+def test_the_renderer_samples_an_image_not_a_canvas():
+    """The client now loads one NAIP photograph rather than compositing tiles."""
+    src = _scene_source()
+    assert "terrain.patch.image" in src
+    assert "terrain.patch.canvas" not in src

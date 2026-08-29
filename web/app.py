@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, url_for
 from pydantic import ValidationError
@@ -34,6 +35,28 @@ PAGES = {
 }
 
 
+_ASSET_VERSIONS: dict[str, str] = {}
+
+
+def _asset_version(app: Flask, filename: str) -> str:
+    """A short fingerprint of a static file, used as a cache-busting query.
+
+    Without it a browser can keep serving an old script after a deploy, which
+    looks exactly like a bug in the new code and wastes time chasing it. The
+    value changes when the file does and stays put when it does not.
+    """
+    cached = _ASSET_VERSIONS.get(filename)
+    if cached is not None and not app.debug:
+        return cached
+    try:
+        path = Path(app.static_folder or "") / filename
+        stamp = f"{int(path.stat().st_mtime)}-{path.stat().st_size}"
+    except OSError:
+        stamp = "0"
+    _ASSET_VERSIONS[filename] = stamp
+    return stamp
+
+
 def create_app(settings: Settings | None = None) -> Flask:
     settings = settings or load_settings()
     app = Flask(__name__)
@@ -46,6 +69,11 @@ def create_app(settings: Settings | None = None) -> Flask:
     app.settings = settings
     limiter = RateLimiter(settings.rate_limit_per_minute, settings.rate_limit_burst)
     app.limiter = limiter
+
+    @app.url_defaults
+    def _version_static(endpoint, values):
+        if endpoint == "static" and "filename" in values:
+            values["v"] = _asset_version(app, values["filename"])
 
     # ---- cross cutting ---------------------------------------------------
 

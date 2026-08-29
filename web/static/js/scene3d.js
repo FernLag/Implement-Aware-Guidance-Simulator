@@ -183,6 +183,19 @@
       return [w / 2 + dot(v, b.r) * focal / z, h / 2 - dot(v, b.u) * focal / z];
     }
 
+    // The far field, under the photograph rather than over it, so the ground
+    // still reaches the horizon where the imagery runs out.
+    var far = [screen(cx - 400, -400), screen(cx + 400, -400),
+               screen(cx + 400, 400), screen(cx - 400, 400)];
+    if (far.every(Boolean)) {
+      ctx.beginPath();
+      ctx.moveTo(far[0][0], far[0][1]);
+      for (var f = 1; f < far.length; f++) { ctx.lineTo(far[f][0], far[f][1]); }
+      ctx.closePath();
+      ctx.fillStyle = "rgb(185,172,144)";
+      ctx.fill();
+    }
+
     for (var x = cx - back; x < cx + fwd; x += step) {
       for (var y = -halfY; y < halfY; y += step) {
         var s00 = map(x, y), s10 = map(x + step, y);
@@ -499,12 +512,18 @@
     var x1 = x0 + 190;
     function g(x, y, z) { return place([x, y, z || 0], [0, 0], 0, tilt); }
 
-    // A large base plane first. Without it the drawn field simply stops and
-    // the page background shows through as a pale ridge along both sides,
-    // which reads as a valley rather than as the edge of the detail.
-    out.push({ p: [g(cx - 400, -400, -0.02), g(cx + 400, -400, -0.02),
-                   g(cx + 400, 400, -0.02), g(cx - 400, 400, -0.02)],
-               c: COL.soil, k: 0.9, cull: false });
+    // A large base plane, so the drawn field does not simply stop with the
+    // page background showing through as a pale ridge along both sides.
+    //
+    // ONLY when there is no photograph. This quad is opaque and lives in the
+    // depth-sorted list, which is drawn AFTER the imagery background pass, so
+    // including it here painted straight over the aerial photograph and made
+    // the imagery look as though it had never loaded.
+    if (!textured) {
+      out.push({ p: [g(cx - 400, -400, -0.02), g(cx + 400, -400, -0.02),
+                     g(cx + 400, 400, -0.02), g(cx - 400, 400, -0.02)],
+                 c: COL.soil, k: 0.9, cull: false });
+    }
 
     if (!textured) {
       for (var gx = x0; gx < x1; gx += 8) {

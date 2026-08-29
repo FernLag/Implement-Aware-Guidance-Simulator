@@ -391,3 +391,20 @@ def test_render_blueprint_runs_a_single_worker():
     assert "-w 1" in blueprint["services"][0]["startCommand"]
 
 
+
+
+def test_static_assets_are_cache_busted(client):
+    """A browser serving an old script after a deploy looks exactly like a bug
+    in the new code, and costs real time to chase."""
+    html = client.get("/").get_data(as_text=True)
+    for asset in ("css/main.css", "js/app.js", "js/scene3d.js", "js/terrain.js"):
+        assert f"{asset}?v=" in html, asset
+
+
+def test_the_version_changes_only_when_the_file_does(app, tmp_path):
+    from web.app import _ASSET_VERSIONS, _asset_version
+
+    _ASSET_VERSIONS.clear()
+    first = _asset_version(app, "js/app.js")
+    second = _asset_version(app, "js/app.js")
+    assert first == second and first != "0"
