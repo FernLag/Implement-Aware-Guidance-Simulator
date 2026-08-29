@@ -202,11 +202,15 @@ only a control one.
 
 A **3D view** plays the pass back with the machine on tilted ground, the hitch
 articulating, and the worked swath painted behind it, which makes the implement
-lag visible in a way a line chart does not. It is drawn by a hand written
-projection renderer, no library, because the content security policy forbids
-loading one and the geometry is boxes and prisms.
+lag visible in a way a line chart does not. It is drawn by a hand written WebGL
+renderer, no library: a depth buffer rather than sorting by centroid, per-pixel
+lighting, hardware anti-aliasing, and perspective-correct ground texturing. The
+whole client comes to 68 kB.
 
-The view draws a tapered bonnet, a cab with posts and glass, an exhaust stack,
+A frame is four draw calls rather than roughly 1,900 canvas path fills, which
+is where the lag came from.
+
+The view draws a curved bonnet, a cab with posts and glass, an exhaust stack,
 fenders, front weights, tread lugs and rims on every wheel, and tools along the
 implement bar chosen by its draft class: discs for a harrow, row units for a
 planter, tines for a cultivator, modules for a laser weeder. On the ground it

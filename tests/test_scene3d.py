@@ -150,32 +150,8 @@ def _scene_source() -> str:
     return (REPO / "web" / "static" / "js" / "scene3d.js").read_text()
 
 
-def test_camera_builds_an_orthonormal_basis_rather_than_rotating_by_hand():
-    """The first version rotated points by yaw then pitch directly, which made
-    the top view nearly horizontal. A forward, right and up basis fixes it."""
-    src = _scene_source()
-    assert "Scene.prototype.basis" in src
-    assert "cross(f, [0, 0, 1])" in src
-    assert "cross(r, f)" in src
 
 
-def test_pitch_is_clamped_below_a_right_angle():
-    """At exactly 90 degrees the right vector degenerates."""
-    src = _scene_source()
-    assert "Math.min(1.48" in src
-
-
-def test_near_plane_clips_polygons_instead_of_dropping_faces():
-    """Dropping a whole face let survivors project at a thousand pixels per
-    metre, which is what filled the screen with a dark tyre."""
-    src = _scene_source()
-    assert "function clipNear" in src
-    assert "var NEAR" in src
-
-
-def test_backface_culling_is_applied():
-    src = _scene_source()
-    assert "Backface culling" in src
 
 
 def test_three_camera_presets_are_defined():
@@ -290,84 +266,121 @@ def test_appearance_cannot_change_a_result():
     assert a["series"]["cross_track"] == b["series"]["cross_track"]
 
 
-def test_the_base_plane_is_not_drawn_over_the_photograph():
-    """A regression guard for a bug that made the imagery look as though it
-    had never loaded.
-
-    The aerial photograph is painted as a background pass before the
-    depth-sorted faces. An opaque 800 m base plane was being pushed into that
-    sorted list, so it drew straight over the photograph. The base plane must
-    only enter the sorted list when there is no imagery; with imagery it is
-    drawn inside the background pass, underneath.
-    """
-    src = _scene_source()
-    build = src[src.index("function buildGround"):src.index("function edgePair")]
-    assert "if (!textured) {" in build, "the base plane is unconditional again"
-
-    ground = src[src.index("Scene.prototype.drawGround"):src.index("Scene.prototype.draw =")]
-    assert "under the photograph rather than over it" in ground
-    assert "screen(cx - 400, -400)" in ground, "no far field beneath the imagery"
-
-
-def test_the_renderer_samples_an_image_not_a_canvas():
-    """The client now loads one NAIP photograph rather than compositing tiles."""
-    src = _scene_source()
-    assert "terrain.patch.image" in src
-    assert "terrain.patch.canvas" not in src
 
 
 # --- realism pass ----------------------------------------------------------
 
-def test_the_scene_has_a_sky():
-    """A flat backdrop reads as a diagram rather than a place."""
+
+
+
+
+
+
+
+
+# --- the WebGL renderer ----------------------------------------------------
+#
+# The canvas 2D renderer it replaced had three standing limits: faces sorted by
+# centroid so intersecting geometry could sort wrongly, flat shading, and an
+# affine texture map over small quads because canvas has no projective
+# transform. These check that the replacement actually removes them rather than
+# reproducing them in a different API.
+
+
+def test_depth_testing_replaces_sorting_by_centroid():
+    """A depth buffer is the whole reason for the rewrite."""
     src = _scene_source()
-    assert "createLinearGradient" in src
-    assert "Sky." in src
+    assert "gl.enable(gl.DEPTH_TEST)" in src
+    assert "list.sort" not in src, "faces are being sorted again"
 
 
-def test_shadows_are_projected_from_the_real_geometry():
-    """A rectangle under the machine is a placeholder, not a shadow."""
+def test_culling_is_off_and_lighting_is_two_sided():
+    """Culling would demand every quad in the file be wound consistently, and
+    one mistake silently deletes a face. Off, the shader must light both
+    sides or a back face renders black."""
     src = _scene_source()
-    assert "function shadowPolygons" in src
-    assert "function buildShadow" not in src, "the fake rectangle shadow is back"
+    assert "gl.disable(gl.CULL_FACE)" in src
+    assert "gl.cullFace" not in src
+    assert "gl_FrontFacing" in src
 
 
-def test_the_shadow_is_filled_once_not_per_polygon():
-    """Filling each polygon separately compounds alpha where faces overlap,
-    which is most places, and turns the shadow into a black blob."""
+def test_the_ground_is_textured_by_uv_not_by_subdivision():
+    """Texture coordinates are perspective correct in a shader, so the affine
+    triangle mapping the canvas version needed is gone."""
     src = _scene_source()
-    shadow_block = src[src.index("// Cast shadow, between the ground"):]
-    shadow_block = shadow_block[:shadow_block.index("var list = [];")]
-    assert shadow_block.count("ctx.fill()") == 1
+    assert "attribute vec2 aUV" in src
+    assert "texture2D(uTex" in src
+    assert "texTriangle" not in src, "the affine workaround is back"
 
 
-def test_shadows_are_cast_by_the_machine_and_not_by_the_ground():
-    """The ground casting a shadow on itself would darken the whole field."""
+def test_lighting_is_per_pixel_with_a_specular_term():
     src = _scene_source()
-    assert "faces.slice(machineStart)" in src
+    assert "precision mediump float" in src
+    assert "pow(lambert" in src
+    assert "max(dot(n, uLight), 0.0)" in src
 
 
-def test_wheels_have_a_contact_patch():
+def test_the_shadow_darkens_the_ground_once():
+    """Overlapping shadow geometry blended repeatedly turns into a black blob.
+    The stencil buffer is what keeps it to a single darkening."""
     src = _scene_source()
-    assert "function contactPatch" in src
-    assert "noShadow: true" in src, "the contact patch must not cast its own shadow"
+    assert "gl.STENCIL_TEST" in src
+    assert "gl.stencilOp" in src
+    assert "colorMask(false" in src, "the stencil pass must not write colour"
 
 
-def test_the_bonnet_is_built_from_curved_segments():
-    """A single tapered box is what made it read as a crate."""
+def test_the_shadow_comes_from_the_machine_geometry():
     src = _scene_source()
-    hood = src[src.index("// Bonnet: from the front of the cab"):]
-    hood = hood[:hood.index("// Grille and lamps")]
-    assert "for (var hs = 0" in hood
-    assert "Math.sqrt" in hood, "no elliptical falloff on the bonnet line"
+    assert "function shadowVertices" in src
+    assert "shadowVertices(machine.data" in src
 
 
-def test_surfaces_have_a_specular_lobe():
+def test_the_bonnet_still_curves():
     src = _scene_source()
-    assert "Math.pow(lambert" in src
+    assert "Math.sqrt(Math.max(0.04, 1 - tm * tm * 0.55))" in src
 
 
-def test_colour_channels_are_clamped():
-    """A specular highlight that overflows 255 wraps to a dark colour."""
+def test_the_camera_preset_names_survive_the_rewrite():
     src = _scene_source()
-    assert src.count("Math.min(255, Math.round(") == 3
+    assert "applyPreset" in src
+    for mode in ("chase", "side", "top"):
+        assert '"' + mode + '"' in src
+    app = (REPO / "web" / "static" / "js" / "app.js").read_text()
+    assert 'scene.applyPreset(btn.getAttribute("data-view"))' in app
+
+
+def test_pitch_is_still_clamped_below_a_right_angle():
+    assert "Math.min(1.48" in _scene_source()
+
+
+def test_no_rendering_library_is_vendored():
+    """Written by hand, so nothing large and external lands in the repository."""
+    js = REPO / "web" / "static" / "js"
+    for script in js.glob("*.js"):
+        text = script.read_text()
+        assert "https://" not in text and "http://" not in text
+        for lib in ("THREE.", "three.min", "babylon", "regl", "twgl"):
+            assert lib not in text, f"{script.name} vendors {lib}"
+    total = sum(f.stat().st_size for f in js.glob("*.js"))
+    assert total < 120_000, f"client bundle grew to {total} bytes"
+
+
+def test_the_matrix_helper_is_small_and_self_contained():
+    glmath = (REPO / "web" / "static" / "js" / "glmath.js").read_text()
+    assert len(glmath.splitlines()) < 120
+    for name in ("perspective", "lookAt", "multiply"):
+        assert name in glmath
+
+
+def test_glmath_loads_before_the_renderer_that_uses_it():
+    base = (REPO / "web" / "templates" / "base.html").read_text()
+    assert base.index("glmath.js") < base.index("scene3d.js")
+
+
+def test_missing_webgl_degrades_rather_than_breaking():
+    """The chart, the metrics and the table carry every number, so losing the
+    3D view must not lose the result."""
+    app = (REPO / "web" / "static" / "js" / "app.js").read_text()
+    assert "GuidanceScene.create(canvas)" in app
+    assert "catch (err)" in app
+    assert "needs WebGL" in app

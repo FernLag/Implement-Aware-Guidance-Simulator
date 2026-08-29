@@ -396,7 +396,20 @@
     sceneData = data;
     frame = 0;
     if (!scene) {
-      scene = window.GuidanceScene.create(canvas);
+      try {
+        scene = window.GuidanceScene.create(canvas);
+      } catch (err) {
+        // Without WebGL the chart, the metrics and the data table still carry
+        // every number, so the page degrades rather than breaking.
+        canvas.hidden = true;
+        document.getElementById("scene-caveat").textContent =
+          "The 3D view needs WebGL, which this browser did not provide. " +
+          "Every figure is still shown in the chart and the table below.";
+        document.querySelectorAll(".scene-controls, .scene-views").forEach(function (el) {
+          el.hidden = true;
+        });
+        return;
+      }
       attachSceneControls(canvas);
     }
 
