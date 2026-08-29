@@ -70,12 +70,18 @@
      wash every surface reads at full strength however far away it is, which is
      most of what made the first version look flat and toy-like. */
   function shade(rgb, n, k, depth) {
-    var l = 0.46 + 0.54 * Math.max(0, dot(n, LIGHT));
+    var lambert = Math.max(0, dot(n, LIGHT));
+    var l = 0.46 + 0.54 * lambert;
     l *= (k === undefined ? 1 : k);
     var c = [rgb[0] * l, rgb[1] * l, rgb[2] * l];
+    // A narrow specular lobe. Painted steel and glass both catch the sky, and
+    // without it every surface reads as chalk.
+    var spec = Math.pow(lambert, 22) * 90;
+    if (spec > 1) { c = [c[0] + spec, c[1] + spec, c[2] + spec]; }
     var fade = Math.min(0.5, Math.max(0, (depth - 12) / 150));
     c = mix(c, SKY, fade);
-    return "rgb(" + Math.round(c[0]) + "," + Math.round(c[1]) + "," + Math.round(c[2]) + ")";
+    return "rgb(" + Math.min(255, Math.round(c[0])) + "," +
+      Math.min(255, Math.round(c[1])) + "," + Math.min(255, Math.round(c[2])) + ")";
   }
 
   /* Machine coordinates into the world, then tilt the world by the slope. */
@@ -213,7 +219,7 @@
     }
   };
 
-  Scene.prototype.draw = function (faces, target, terrain, cx, tilt) {
+  Scene.prototype.draw = function (faces, target, terrain, cx, tilt, shadows) {
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
     var w = this.canvas.clientWidth, h = this.canvas.clientHeight;
     if (!w || !h) { return; }
@@ -223,7 +229,15 @@
     }
     var ctx = this.ctx;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = "#E7DCC4";
+
+    // Sky. A scene with a flat backdrop reads as a diagram; a graded one with
+    // haze near the horizon reads as a place. Cheap, and it does more for the
+    // impression of depth than any amount of extra geometry.
+    var sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0.0, "#A8BBC8");
+    sky.addColorStop(0.55, "#CBD3CE");
+    sky.addColorStop(1.0, "#E4DCC6");
+    ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
 
     var b = this.basis(target);
@@ -231,6 +245,25 @@
 
     if (terrain && terrain.patch && terrain.map) {
       this.drawGround(ctx, terrain, b, focal, w, h, cx, tilt);
+    }
+
+    // Cast shadow, between the ground and everything standing on it.
+    if (shadows && shadows.length) {
+      ctx.save();
+      ctx.beginPath();
+      for (var sp = 0; sp < shadows.length; sp++) {
+        var poly = shadows[sp], first = true, ok = true;
+        for (var pv = 0; pv < poly.length; pv++) {
+          var cq = toCamera(poly[pv], b);
+          if (cq.z < NEAR) { ok = false; break; }
+          var px = w / 2 + cq.x * focal / cq.z, py = h / 2 - cq.y * focal / cq.z;
+          if (first) { ctx.moveTo(px, py); first = false; } else { ctx.lineTo(px, py); }
+        }
+        if (ok) { ctx.closePath(); }
+      }
+      ctx.fillStyle = "rgba(58,46,32,0.34)";
+      ctx.fill();
+      ctx.restore();
     }
 
     var list = [];
@@ -312,8 +345,21 @@
   }
 
   /* A wheel with tread lugs and a visible rim. */
+  /* A pool of darkness where a wheel meets the ground. Real contact patches
+     occlude the light around them and this is what stops a wheel looking like
+     it is resting on a painted surface. */
+  function contactPatch(out, o, yaw, tilt, cx, cy, radius, width) {
+    var n = 10, r = radius * 0.5, ring = [];
+    for (var i = 0; i < n; i++) {
+      var a = (i / n) * Math.PI * 2;
+      ring.push(place([cx + Math.cos(a) * r, cy + Math.sin(a) * width * 1.4, 0.012],
+        o, yaw, tilt));
+    }
+    out.push({ p: ring, flat: "rgba(48,38,26,0.30)", cull: false, noShadow: true });
+  }
+
   function wheel(out, o, yaw, tilt, cx, cy, radius, width, steer, detail, rimCol) {
-    var sides = detail ? 16 : 10, hw = width / 2;
+    var sides = detail ? 24 : 12, hw = width / 2;
     var c = Math.cos(steer || 0), s = Math.sin(steer || 0);
     function pt(ang, r, side) {
       var x = Math.cos(ang) * r, z = Math.sin(ang) * r, y = side * hw;
@@ -373,13 +419,24 @@
       deck * 0.42, trim);
 
     // Bonnet: from the front of the cab to the front axle, and no further.
+    // Built from several short segments that narrow and drop along their
+    // length, so the shoulder curves instead of stepping. A single tapered box
+    // is what made it read as a crate.
     var hoodBack = L * 0.50, hoodFront = L * 1.00;
     var hoodLen = hoodFront - hoodBack;
-    box(out, o, yaw, tilt, (hoodBack + hoodFront) / 2, 0, deck, hoodLen, hoodW, hoodH,
-      body, { taper: pr.bonnet_taper || 0.78, drop: hoodH * (pr.bonnet_drop || 0.28) });
-    // Top panel, so the bonnet has a shoulder instead of one flat face.
-    box(out, o, yaw, tilt, (hoodBack + hoodFront) / 2 - hoodLen * 0.08, 0,
-      deck + hoodH * 0.86, hoodLen * 0.72, hoodW * 0.86, hoodH * 0.2, bodyLit);
+    var segs = 5, drop = hoodH * (pr.bonnet_drop || 0.28);
+    for (var hs = 0; hs < segs; hs++) {
+      var t0 = hs / segs, t1 = (hs + 1) / segs;
+      var tm = (t0 + t1) / 2;
+      // Elliptical falloff, which is much closer to a real bonnet line than
+      // the straight taper it replaces.
+      var shrink = Math.sqrt(Math.max(0.04, 1 - Math.pow(tm, 2) * 0.55));
+      var segH = hoodH * shrink - drop * tm * 0.55;
+      var segW = hoodW * (0.99 - 0.30 * tm * tm);
+      box(out, o, yaw, tilt, hoodBack + hoodLen * tm, 0, deck,
+        hoodLen / segs * 1.04, segW, segH,
+        hs === segs - 1 ? bodyLit : body);
+    }
 
     // Grille and lamps at the nose, level with the front axle.
     box(out, o, yaw, tilt, hoodFront + 0.06, 0, deck + hoodH * 0.18, 0.1,
@@ -425,28 +482,55 @@
 
     if (pr.fenders !== false) {
       [1, -1].forEach(function (side) {
-        box(out, o, yaw, tilt, 0, side * (track / 2 - rw.width * 0.06), rAxle * 1.06,
-          rw.diameter * 0.96, rw.width * 1.28, 0.1, bodyLow);
+        var y = side * (track / 2 - rw.width * 0.06);
+        // An arc of short panels over the wheel instead of a flat slab.
+        for (var fs = 0; fs < 5; fs++) {
+          var a0 = Math.PI * (0.18 + 0.16 * fs);
+          var r = rAxle * 1.12;
+          box(out, o, yaw, tilt, Math.cos(a0) * r * -1, y, r * Math.sin(a0),
+            rw.diameter * 0.24, rw.width * 1.3, 0.09, bodyLow);
+        }
       });
     }
 
     // Drawbar behind the rear axle.
     box(out, o, yaw, tilt, -L * 0.20, 0, deck * 0.36, L * 0.40, 0.12, 0.1, trim);
 
-    wheel(out, o, yaw, tilt, 0, track / 2, rAxle, rw.width, 0, true, rim);
-    wheel(out, o, yaw, tilt, 0, -track / 2, rAxle, rw.width, 0, true, rim);
-    wheel(out, o, yaw, tilt, L, track / 2 * 0.88, fAxle, fw.width, pose.delta, true, rim);
-    wheel(out, o, yaw, tilt, L, -track / 2 * 0.88, fAxle, fw.width, pose.delta, true, rim);
+    [[0, track / 2, rAxle, rw.width, 0], [0, -track / 2, rAxle, rw.width, 0],
+     [L, track / 2 * 0.88, fAxle, fw.width, pose.delta],
+     [L, -track / 2 * 0.88, fAxle, fw.width, pose.delta]].forEach(function (c) {
+      contactPatch(out, o, yaw, tilt, c[0], c[1], c[2], c[3]);
+      wheel(out, o, yaw, tilt, c[0], c[1], c[2], c[3], c[4], true, rim);
+    });
   }
 
-  /* A soft footprint on the ground. Without it the machine reads as floating,
-     which was most of the remaining toy-like quality. */
-  function buildShadow(out, o, yaw, tilt, len, wid, cx) {
-    var off = 0.35;
-    function s2(x, y) { return place([cx + x + off, y - off, 0.045], o, yaw, tilt); }
-    out.push({ p: [s2(-len / 2, -wid / 2), s2(len / 2, -wid / 2),
-                   s2(len / 2, wid / 2), s2(-len / 2, wid / 2)],
-               flat: "rgba(72,58,40,0.22)", cull: false });
+  /* Cast shadow, projected from the real geometry rather than faked with a
+     rectangle under the machine.
+
+     Every face is dropped onto the ground along the light direction and the
+     whole set is filled ONCE as a single path. Filling them individually would
+     compound the alpha wherever faces overlap, which is most places, and turn
+     the shadow into a black blob. */
+  function shadowPolygons(faces, tiltSin, tiltCos) {
+    var out = [];
+    for (var i = 0; i < faces.length; i++) {
+      var f = faces[i];
+      if (f.line || f.noShadow) { continue; }
+      var poly = [];
+      for (var j = 0; j < f.p.length; j++) {
+        var p = f.p[j];
+        // Undo the world tilt, drop along the light, then tilt back, so the
+        // shadow lies on the sloped ground rather than on a flat one.
+        var y = p[1] * tiltCos + p[2] * tiltSin;
+        var z = -p[1] * tiltSin + p[2] * tiltCos;
+        if (z < 0.02) { poly = null; break; }
+        var gx = p[0] + z * (LIGHT[0] / LIGHT[2]);
+        var gy = y + z * (LIGHT[1] / LIGHT[2]);
+        poly.push([gx, gy * tiltCos, gy * tiltSin]);
+      }
+      if (poly && poly.length >= 3) { out.push(poly); }
+    }
+    return out;
   }
 
   /* ---------------- the implement ---------------- */
@@ -618,8 +702,7 @@
           im.implement_wheelbase.value, im.working_width.value / 2);
       }
       buildTracks(faces, s, frame, tilt, g.track_width.value);
-      buildShadow(faces, [pose.x, pose.y], pose.theta, tilt,
-        g.wheelbase.value * 1.7, g.track_width.value * 1.05, g.wheelbase.value * 0.45);
+      var machineStart = faces.length;
       buildTractor(faces, g, pose, tilt);
 
       if (im) {
@@ -627,15 +710,16 @@
         var hx = pose.x - a * Math.cos(pose.theta), hy = pose.y - a * Math.sin(pose.theta);
         var ix = hx - b * Math.cos(pose.thetaImplement);
         var iy = hy - b * Math.sin(pose.thetaImplement);
-        buildShadow(faces, [ix, iy], pose.thetaImplement, tilt,
-          im.frame_depth.value * 1.2, im.working_width.value, 0);
         buildImplement(faces, im, hx, hy, ix, iy, pose.theta, pose.thetaImplement, tilt);
       }
+
+      var shadows = shadowPolygons(faces.slice(machineStart),
+        Math.sin(tilt), Math.cos(tilt));
 
       var back = im ? (im.hitch_distance.value + im.implement_wheelbase.value) * 0.5 : 0;
       var target = place([pose.x - back * Math.cos(pose.theta),
                           pose.y - back * Math.sin(pose.theta), 1.4], [0, 0], 0, tilt);
-      scene.draw(faces, target, terrain, pose.x, tilt);
+      scene.draw(faces, target, terrain, pose.x, tilt, shadows);
       return pose;
     }
   };

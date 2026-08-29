@@ -314,3 +314,60 @@ def test_the_renderer_samples_an_image_not_a_canvas():
     src = _scene_source()
     assert "terrain.patch.image" in src
     assert "terrain.patch.canvas" not in src
+
+
+# --- realism pass ----------------------------------------------------------
+
+def test_the_scene_has_a_sky():
+    """A flat backdrop reads as a diagram rather than a place."""
+    src = _scene_source()
+    assert "createLinearGradient" in src
+    assert "Sky." in src
+
+
+def test_shadows_are_projected_from_the_real_geometry():
+    """A rectangle under the machine is a placeholder, not a shadow."""
+    src = _scene_source()
+    assert "function shadowPolygons" in src
+    assert "function buildShadow" not in src, "the fake rectangle shadow is back"
+
+
+def test_the_shadow_is_filled_once_not_per_polygon():
+    """Filling each polygon separately compounds alpha where faces overlap,
+    which is most places, and turns the shadow into a black blob."""
+    src = _scene_source()
+    shadow_block = src[src.index("// Cast shadow, between the ground"):]
+    shadow_block = shadow_block[:shadow_block.index("var list = [];")]
+    assert shadow_block.count("ctx.fill()") == 1
+
+
+def test_shadows_are_cast_by_the_machine_and_not_by_the_ground():
+    """The ground casting a shadow on itself would darken the whole field."""
+    src = _scene_source()
+    assert "faces.slice(machineStart)" in src
+
+
+def test_wheels_have_a_contact_patch():
+    src = _scene_source()
+    assert "function contactPatch" in src
+    assert "noShadow: true" in src, "the contact patch must not cast its own shadow"
+
+
+def test_the_bonnet_is_built_from_curved_segments():
+    """A single tapered box is what made it read as a crate."""
+    src = _scene_source()
+    hood = src[src.index("// Bonnet: from the front of the cab"):]
+    hood = hood[:hood.index("// Grille and lamps")]
+    assert "for (var hs = 0" in hood
+    assert "Math.sqrt" in hood, "no elliptical falloff on the bonnet line"
+
+
+def test_surfaces_have_a_specular_lobe():
+    src = _scene_source()
+    assert "Math.pow(lambert" in src
+
+
+def test_colour_channels_are_clamped():
+    """A specular highlight that overflows 255 wraps to a dark colour."""
+    src = _scene_source()
+    assert src.count("Math.min(255, Math.round(") == 3
