@@ -175,10 +175,12 @@
   };
 
   Builder.prototype.wheel = function (o, yaw, tilt, cx, cy, radius, width, steer,
-                                      sides, rimCol) {
+                                      sides, rimCol, spin) {
     var hw = width / 2, cs = Math.cos(steer || 0), sn = Math.sin(steer || 0);
+    var roll = spin || 0;
     var self = this;
     function pt(ang, r, side) {
+      ang += roll;
       var x = Math.cos(ang) * r, z = Math.sin(ang) * r, y = side * hw;
       return place([cx + x * cs - y * sn, cy + x * sn + y * cs, radius + z], o, yaw, tilt);
     }
@@ -251,9 +253,17 @@
      [-cabLen / 2, cabW / 2], [-cabLen / 2, -cabW / 2]].forEach(function (c) {
       mb.box(o, yaw, tilt, cabX + c[0], c[1], cabZ, 0.075, 0.075, cabH, trim);
     });
-    // Glass as a thin shell, so it has depth under the shader.
-    mb.box(o, yaw, tilt, cabX, 0, cabZ + 0.09, cabLen * 0.97, cabW * 0.97,
-      cabH * 0.85, COL.glass);
+    // Glazing as four thin panels between the posts. A single solid box the
+    // size of the cab, which is what was here, just reads as a grey crate: the
+    // frame has to be visible against the glass for it to look like a cab.
+    var glassZ = cabZ + 0.09, glassH = cabH * 0.82, t = 0.05;
+    mb.box(o, yaw, tilt, cabX + cabLen / 2, 0, glassZ, t, cabW * 0.9, glassH, COL.glass);
+    mb.box(o, yaw, tilt, cabX - cabLen / 2, 0, glassZ, t, cabW * 0.9, glassH, COL.glass);
+    mb.box(o, yaw, tilt, cabX, cabW / 2, glassZ, cabLen * 0.9, t, glassH, COL.glass);
+    mb.box(o, yaw, tilt, cabX, -cabW / 2, glassZ, cabLen * 0.9, t, glassH, COL.glass);
+    // Interior, so the cab is not hollow when seen through the glazing.
+    mb.box(o, yaw, tilt, cabX - cabLen * 0.16, 0, glassZ, cabLen * 0.34,
+      cabW * 0.45, glassH * 0.55, mixc(trim, [1, 1, 1], 0.12));
     mb.box(o, yaw, tilt, cabX, 0, cabZ + cabH * 0.94, cabLen * 1.14, cabW * 1.16,
       0.11, roof);
     mb.box(o, yaw, tilt, cabX + cabLen * 0.42, 0, cabZ + cabH * 0.94 + 0.11,
@@ -265,24 +275,41 @@
     }
 
     if (pr.fenders !== false) {
+      // A continuous curved strip over the wheel. Built as quads following the
+      // arc rather than axis-aligned boxes placed along it, which is what made
+      // the old fenders read as debris scattered round the tyre.
       [1, -1].forEach(function (side) {
         var y = side * (track / 2 - rw.width * 0.06);
-        for (var fs = 0; fs < 6; fs++) {
-          var ang = Math.PI * (0.16 + 0.135 * fs), r = rAxle * 1.12;
-          mb.box(o, yaw, tilt, -Math.cos(ang) * r, y, r * Math.sin(ang),
-            rw.diameter * 0.22, rw.width * 1.3, 0.08, bodyLow);
+        var hwid = rw.width * 0.66, r = rAxle * 1.14, steps = 9;
+        for (var fs = 0; fs < steps; fs++) {
+          var a0 = Math.PI * (0.14 + 0.72 * (fs / steps));
+          var a1 = Math.PI * (0.14 + 0.72 * ((fs + 1) / steps));
+          function arc(ang, dy) {
+            return place([-Math.cos(ang) * r, y + dy, r * Math.sin(ang)], o, yaw, tilt);
+          }
+          mb.quad(arc(a0, -hwid), arc(a1, -hwid), arc(a1, hwid), arc(a0, hwid), bodyLow);
         }
       });
     }
 
     mb.box(o, yaw, tilt, -L * 0.20, 0, deck * 0.36, L * 0.40, 0.12, 0.1, trim);
 
+    // Wheels turn with distance travelled, and turn FASTER than the ground
+    // goes by when there is slip, which is the one place the model's travel
+    // reduction is visible rather than merely tabulated.
     [[0, track / 2, rAxle, rw.width, 0], [0, -track / 2, rAxle, rw.width, 0],
      [L, track / 2 * 0.88, fAxle, fw.width, pose.delta],
      [L, -track / 2 * 0.88, fAxle, fw.width, pose.delta]].forEach(function (c) {
-      mb.wheel(o, yaw, tilt, c[0], c[1], c[2], c[3], c[4], 22, rim);
+      mb.wheel(o, yaw, tilt, c[0], c[1], c[2], c[3], c[4], 22, rim,
+        -pose.travel / (c[2] * Math.max(0.15, 1 - (pose.slip || 0))));
     });
   }
+
+  // A mounted implement carries no hitch geometry in the catalog, because it
+  // has no hitch degree of freedom. Drawn at zero offset it lands inside the
+  // tractor and disappears, which is exactly what happened. A three point
+  // linkage puts it behind the rear axle where it actually hangs.
+  var MOUNTED_LINKAGE_M = 1.15;
 
   function buildImplement(mb, im, hx, hy, ix, iy, yawT, yawI, tilt) {
     var lv = im.livery || {};
@@ -294,8 +321,18 @@
     var bb = im.implement_wheelbase.value;
     var o = [ix, iy];
 
-    mb.box([hx, hy], yawI, tilt, -bb / 2, 0, 0.62, bb, 0.16, 0.14, dark);
-    mb.box([hx, hy], yawT, tilt, 0.06, 0, 0.6, 0.24, 0.2, 0.2, steel);
+    if (im.type === "trailed") {
+      mb.box([hx, hy], yawI, tilt, -bb / 2, 0, 0.62, bb, 0.16, 0.14, dark);
+      mb.box([hx, hy], yawT, tilt, 0.06, 0, 0.6, 0.24, 0.2, 0.2, steel);
+    } else {
+      // Lower links and a top link, which is what a mounted implement hangs on.
+      [0.42, -0.42].forEach(function (dy) {
+        mb.box([hx, hy], yawI, tilt, -MOUNTED_LINKAGE_M / 2, dy, 0.42,
+          MOUNTED_LINKAGE_M, 0.09, 0.09, steel);
+      });
+      mb.box([hx, hy], yawI, tilt, -MOUNTED_LINKAGE_M * 0.45, 0, 0.95,
+        MOUNTED_LINKAGE_M * 0.8, 0.07, 0.07, steel);
+    }
 
     mb.box(o, yawI, tilt, 0, 0, 0.66, depth * 0.5, width, 0.22, main);
     mb.box(o, yawI, tilt, depth * 0.42, 0, 0.7, 0.18, width * 0.96, 0.16, dark);
@@ -598,6 +635,8 @@
       var pose = {
         x: s.x[frame], y: s.y[frame], theta: s.theta[frame],
         delta: s.delta_rad[frame] || 0,
+        slip: data.scene.slip || 0,
+        travel: Math.hypot(s.x[frame] - s.x[0], s.y[frame] - s.y[0]),
         thetaImplement: s.theta_implement ? s.theta_implement[frame] : s.theta[frame]
       };
 
@@ -606,8 +645,11 @@
       if (im) {
         var a = im.hitch_distance.value, b = im.implement_wheelbase.value;
         var hx = pose.x - a * Math.cos(pose.theta), hy = pose.y - a * Math.sin(pose.theta);
-        var ix = hx - b * Math.cos(pose.thetaImplement);
-        var iy = hy - b * Math.sin(pose.thetaImplement);
+        // Trailed implements sit b behind the hitch. Mounted ones have no b,
+        // so they sit on the linkage instead of on top of the tractor.
+        var reach = im.type === "trailed" ? b : MOUNTED_LINKAGE_M;
+        var ix = hx - reach * Math.cos(pose.thetaImplement);
+        var iy = hy - reach * Math.sin(pose.thetaImplement);
         buildImplement(machine, im, hx, hy, ix, iy, pose.theta, pose.thetaImplement, tilt);
       }
 

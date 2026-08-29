@@ -239,5 +239,6 @@ def run_simulation(req, max_steps: int) -> dict:
             "slope_deg": req.slope_deg,
             "slope_sign": req.slope_sign,
             "speed": req.speed,
+            "slip": req.slip,
         },
     }

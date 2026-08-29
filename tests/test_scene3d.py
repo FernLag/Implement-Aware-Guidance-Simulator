@@ -8,6 +8,7 @@ response, or a script reaching for an element id that no template contains.
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -384,3 +385,61 @@ def test_missing_webgl_degrades_rather_than_breaking():
     assert "GuidanceScene.create(canvas)" in app
     assert "catch (err)" in app
     assert "needs WebGL" in app
+
+
+# --- headless geometry check ----------------------------------------------
+
+def test_scene_geometry_passes_the_headless_check(tmp_path):
+    """Run the geometry builders for every implement and assert nothing is
+    broken in a way only a screenshot would show.
+
+    This exists because a Python test cannot reach the renderer, and the bug
+    it was written for was invisible to the rest of the suite: mounted
+    implements were drawn at zero offset, so they landed inside the tractor
+    body and simply did not appear.
+    """
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed; the browser-side check needs it")
+
+    scenes = tmp_path / "scenes.json"
+    dump = subprocess.run(
+        [sys.executable, str(REPO / "scripts" / "dump_scenes.py")],
+        cwd=REPO, capture_output=True, text=True,
+    )
+    assert dump.returncode == 0, dump.stderr[-2000:]
+    scenes.write_text(dump.stdout)
+
+    result = subprocess.run(
+        [node, str(REPO / "scripts" / "check_scene_geometry.js"), str(scenes)],
+        cwd=REPO, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-1000:]
+    assert "all checks passed" in result.stdout
+
+
+def test_wheels_turn_with_travel_and_slip():
+    """The one place travel reduction is visible rather than tabulated: with
+    slip the wheels turn faster than the ground goes by."""
+    src = _scene_source()
+    assert "pose.travel" in src
+    assert "1 - (pose.slip || 0)" in src
+
+
+def test_mounted_implements_hang_off_a_linkage():
+    src = _scene_source()
+    assert "MOUNTED_LINKAGE_M" in src
+    assert 'im.type === "trailed" ? b : MOUNTED_LINKAGE_M' in src
+
+
+def test_the_cab_is_glazed_rather_than_a_solid_box():
+    src = _scene_source()
+    assert "Glazing as four thin panels" in src
+
+
+def test_fenders_follow_the_arc():
+    src = _scene_source()
+    assert "A continuous curved strip over the wheel" in src

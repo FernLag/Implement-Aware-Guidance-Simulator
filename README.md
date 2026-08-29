@@ -442,6 +442,17 @@ more than a half-configured Gazebo world. Nothing above depends on it.
 
 ## Testing
 
+A headless geometry check runs the 3D builders under Node for every implement
+in the catalog and asserts things a screenshot would otherwise be the only way
+to notice: nothing non-finite, a mounted implement not buried inside the
+tractor, a wide implement actually spanning its width. It found the bug it was
+written for.
+
+```bash
+python3 scripts/dump_scenes.py > /tmp/scenes.json
+node scripts/check_scene_geometry.js /tmp/scenes.json
+```
+
 The suite is offline by design. `tests/conftest.py` closes the socket layer for
 the whole run, so a test that tried to reach USGS fails loudly instead of
 depending on a public service being up. CI runs it on Python 3.11 and 3.12
