@@ -502,3 +502,23 @@ def test_the_headless_scene_comes_from_the_renderer():
     check = (REPO / "scripts" / "check_scene_geometry.js").read_text()
     assert "GuidanceScene.headless()" in check
     assert "stubScene" not in check
+
+
+def test_scale_figures_stand_still_while_the_machine_drives():
+    """A reference that keeps station with the thing it is measuring tells you
+    nothing. An earlier version placed the figure relative to the tractor, so
+    it slid along the field alongside it."""
+    src = _scene_source()
+    assert "function figurePositions" in src
+    assert "FIGURE_SPACING_M" in src
+    # Positions must come from the field, not from the pose.
+    positions = src[src.index("function figurePositions"):src.index("function buildScaleFigure")]
+    assert "pose" not in positions
+
+
+def test_the_label_follows_the_nearest_figure():
+    """The figures are fixed; the annotation picks whichever is closest so it
+    stays useful as the machine drives past them."""
+    src = _scene_source()
+    assert "var nearest = null" in src
+    assert "Math.abs(f[0] - pose.x)" in src

@@ -242,8 +242,26 @@
   /* Something of known size, so the machine has a scale.
    *
    * A tractor alone in an empty field could be any size at all. A 1.75 m
-   * figure beside it is the cheapest way to say how big it really is, and the
-   * whole point of this catalog is that the sizes are real. */
+   * figure is the cheapest way to say how big it really is, and the whole
+   * point of this catalog is that the sizes are real.
+   *
+   * These STAND STILL. An earlier version placed one relative to the machine,
+   * so it slid along the field keeping station with the tractor, which is
+   * exactly what a scale reference must not do: something that moves with the
+   * thing it is measuring tells you nothing. They are now pegged to fixed
+   * world positions along the headland and the machine drives past them. */
+  var FIGURE_SPACING_M = 50;
+  var FIGURE_OFFSET_M = 16;
+
+  function figurePositions(cx) {
+    var out = [];
+    var first = Math.floor((cx - 60) / FIGURE_SPACING_M) * FIGURE_SPACING_M;
+    for (var x = first; x < cx + 140; x += FIGURE_SPACING_M) {
+      out.push([x, FIGURE_OFFSET_M]);
+    }
+    return out;
+  }
+
   function buildScaleFigure(mb, x, y, tilt) {
     var o = [x, y], skin = [0.76, 0.62, 0.50], cloth = [0.24, 0.30, 0.42];
     mb.box(o, 0, tilt, 0, 0.09, 0, 0.16, 0.13, 0.86, cloth);
@@ -776,22 +794,24 @@
           im.implement_wheelbase.value, im.working_width.value / 2);
       }
 
-      // A figure of known height, placed clear of the machine on the upslope
-      // side so it never sits inside the implement.
       var span = Math.max(g.wheelbase.value * 2.2,
         im ? im.working_width.value : 0,
         im ? (im.hitch_distance.value + im.implement_wheelbase.value +
               g.wheelbase.value * 1.6) : 0);
-      buildScaleFigure(machine, pose.x + g.wheelbase.value * 1.4,
-        pose.y + span * 0.5 + 2.2, tilt);
       scene.frame(span);
+
+      // Figures standing at fixed points along the headland, well clear of the
+      // widest implement in the catalog, so the machine passes them rather
+      // than carrying them along.
+      var figures = figurePositions(pose.x);
+      var offset = Math.max(FIGURE_OFFSET_M, span * 0.5 + 4);
+      figures.forEach(function (f) {
+        buildScaleFigure(machine, f[0], offset, tilt);
+      });
 
       var back = im ? (im.hitch_distance.value + im.implement_wheelbase.value) * 0.5 : 0;
       var target = place([pose.x - back * Math.cos(pose.theta),
                           pose.y - back * Math.sin(pose.theta), 1.4], [0, 0], 0, tilt);
-
-      var figureAt = [pose.x + g.wheelbase.value * 1.4,
-                      pose.y + span * 0.5 + 2.2];
 
       scene.draw({
         machine: new Float32Array(machine.data),
@@ -807,11 +827,22 @@
         rearAxle: place([0, 0, 0.3], [pose.x, pose.y], pose.theta, tilt),
         frontAxle: place([g.wheelbase.value, 0, 0.3], [pose.x, pose.y], pose.theta, tilt),
         wheelbase: g.wheelbase.value,
-        figure: place([0, 0, 1.75], figureAt, 0, tilt),
-        figureBase: place([0, 0, 0], figureAt, 0, tilt),
+        // Label whichever figure the machine is nearest, so the annotation
+        // follows the view without the figure itself moving.
+        figure: null, figureBase: null,
         target: target,
         pixelsPerMetre: scene.pixelsPerMetre(target)
       };
+
+      var nearest = null, best = 1e9;
+      figures.forEach(function (f) {
+        var d = Math.abs(f[0] - pose.x);
+        if (d < best) { best = d; nearest = f; }
+      });
+      if (nearest) {
+        anchors.figure = place([0, 0, 1.75], [nearest[0], offset], 0, tilt);
+        anchors.figureBase = place([0, 0, 0], [nearest[0], offset], 0, tilt);
+      }
       if (im) {
         var iw = im.working_width.value / 2;
         var nxx = -Math.sin(pose.thetaImplement), nyy = Math.cos(pose.thetaImplement);
