@@ -43,9 +43,27 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "== starting gazebo server =="
-gz sim -s -r -v 2 "$CASE_DIR/world.sdf" &
+gz sim -s -r -v 2 "$CASE_DIR/world.sdf" >"$CASE_DIR/gazebo.log" 2>&1 &
 GZ_PID=$!
-sleep 5
+
+# Wait for the world to answer rather than sleeping a guessed number of
+# seconds. A container starts Gazebo at a different speed every time, and a
+# fixed sleep either wastes time or spawns into a world that does not exist
+# yet, which fails with a message about the service being unavailable and
+# looks like a modelling problem.
+echo "-- waiting for the world --"
+for i in $(seq 1 60); do
+  if gz service -l 2>/dev/null | grep -q "/world/aggsim_field/create"; then
+    echo "-- world up after ${i}s --"; break
+  fi
+  if ! kill -0 "$GZ_PID" 2>/dev/null; then
+    echo "!! gazebo exited during startup:"; tail -30 "$CASE_DIR/gazebo.log"; exit 1
+  fi
+  sleep 1
+done
+if ! gz service -l 2>/dev/null | grep -q "/world/aggsim_field/create"; then
+  echo "!! the world never came up:"; tail -30 "$CASE_DIR/gazebo.log"; exit 1
+fi
 
 echo "== spawning the machine =="
 # Dropped just clear of the ground so the contact solver settles it rather
@@ -57,8 +75,6 @@ ros2 run ros_gz_sim create \
   -name tractor \
   -x 0 -y "$OFFSET" -z 0.6
 
-sleep 3
-
 echo "== bridging topics =="
 ros2 run ros_gz_bridge parameter_bridge \
   /cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist \
@@ -66,7 +82,16 @@ ros2 run ros_gz_bridge parameter_bridge \
   /world/aggsim_field/model/tractor/joint_state@sensor_msgs/msg/JointState@gz.msgs.Model \
   --ros-args -r /world/aggsim_field/model/tractor/joint_state:=/joint_states &
 BRIDGE_PID=$!
-sleep 3
+
+# Odometry has to be arriving before the controller starts, or it publishes
+# nothing and records an empty run that looks like a physics result.
+echo "-- waiting for odometry --"
+for i in $(seq 1 40); do
+  if timeout 2 ros2 topic echo /odom --once >/dev/null 2>&1; then
+    echo "-- odometry flowing after ${i}s --"; break
+  fi
+  sleep 1
+done
 
 echo "== running the controller =="
 python3 /work/scripts/stage7_gazebo_run.py \

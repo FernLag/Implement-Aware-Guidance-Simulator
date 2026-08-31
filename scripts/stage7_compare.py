@@ -103,9 +103,18 @@ def load_physics(name):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sweep", action="store_true")
+    ap.add_argument("--list-cases", action="store_true",
+                    help="print the sweep as shell variables, one case per line, "
+                         "so the runner and the analysis cannot disagree about "
+                         "which cases exist")
     ap.add_argument("--tolerance", type=float, default=0.10,
                     help="metres of lateral disagreement still counted as agreement")
     args = ap.parse_args()
+
+    if args.list_cases:
+        for name, speed, slope, implement_id in CASES:
+            print(f"{name} {speed} {slope} {implement_id}")
+        return 0
 
     OUT_DIR.mkdir(exist_ok=True)
     catalog = load_catalog()

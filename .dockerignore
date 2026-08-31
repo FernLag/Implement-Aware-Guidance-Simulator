@@ -1,16 +1,14 @@
+# The Stage 7 image needs the source and nothing else. Everything here is
+# either output, or local state that would invalidate the build cache on every
+# run for no reason.
 .git
 .github
-results
-tests
-scripts
-docs
-*.png
-*.jsonl
-.env
-.env.*
-instance
 __pycache__
 **/__pycache__
-.pytest_cache
-venv
+*.pyc
+results
+build
+node_modules
 .venv
+venv
+.pytest_cache
